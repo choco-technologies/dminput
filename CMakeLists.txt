@@ -24,13 +24,14 @@ set(DMOD_BUILD_EXAMPLES OFF CACHE BOOL "Build examples")
 set(DMOD_BUILD_TOOLS OFF CACHE BOOL "Build tools")
 set(DMOD_BUILD_TEMPLATES OFF CACHE BOOL "Build templates")
 
-# project() before FetchContent_MakeAvailable(dmod): the compiler test runs
-# before dmod's tools-cfg.cmake adds its include directories (ARG_MAX on CI)
+# dmod first, project() after it: dmod's tools-cfg.cmake chooses the compiler of the architecture
+# (-DDMOD_TOOLS_NAME=arch/...), which has to be done before project() looks for one - the other way round
+# the module is built with the host compiler whatever the architecture (an x86_64 libinput in the armv7 package)
+FetchContent_MakeAvailable(dmod)
+
 project(dminput VERSION ${DMOD_MODULE_VERSION}
     DESCRIPTION "libinput: where the inputs of the system come together; inputd: its service per device"
     LANGUAGES C CXX)
-
-FetchContent_MakeAvailable(dmod)
 
 set(DMOD_DIR ${dmod_SOURCE_DIR} CACHE PATH "DMOD source directory")
 set(DMOD_SCRIPTS_DIR ${DMOD_DIR}/scripts CACHE PATH "DMOD scripts directory")
