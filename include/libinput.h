@@ -148,6 +148,13 @@ dmod_libinput_api(1.0, int, _read, ( libinput_reader_t reader, libinput_event_t*
 /** The keymap a board ships: its files of configs/board/<board>/keymaps go to /cfg/keymaps/board (dmod-boot). */
 #define LIBINPUT_BOARD_KEYMAP           "/cfg/keymaps/board/keymap.ini"
 
+/**
+ * Drop everything that waits in the queue of the reader (what it has not taken yet): what was typed while nobody was listening - a
+ * field that was not selected, the view that was shown before - must not come out when somebody starts to. Returns how many events
+ * were dropped, `-EINVAL` for a NULL reader, `-ECANCELED` for a closed one.
+ */
+dmod_libinput_api(1.0, int, _reader_flush, ( libinput_reader_t reader ));
+
 /** The timeout that does not end. */
 #define LIBINPUT_FOREVER                0xFFFFFFFFu
 
