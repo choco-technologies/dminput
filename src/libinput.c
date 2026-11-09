@@ -177,28 +177,24 @@ dmod_libinput_api_declaration(1.0, int, _read, ( libinput_reader_t reader, libin
 
 struct libinput_feed
 {
-    libinput_device_t   id;
+    char                group[LIBINPUT_GROUP_MAX];
     uint8_t             type;       /* LIBINPUT_SOURCE_* */
     keystate_t          keys;
 };
 
-dmod_libinput_api_declaration(1.0, libinput_device_t, _device_id, ( const char* path ))
+dmod_libinput_api_declaration(1.0, libinput_feed_t, _feed_create, ( const char* group, const dmdrvi_input_info_t* info ))
 {
-    uint32_t hash = 2166136261u;                    /* FNV-1a */
-    for (const char* p = (path != NULL) ? path : ""; *p != '\0'; p++)
-        hash = (hash ^ (uint8_t)*p) * 16777619u;
-    return (hash != 0) ? hash : 1u;
-}
-
-dmod_libinput_api_declaration(1.0, libinput_feed_t, _feed_create, ( const char* path, const dmdrvi_input_info_t* info ))
-{
-    if (path == NULL || info == NULL)
+    if (info == NULL)
         return NULL;
     struct libinput_feed* s = Dmod_Malloc(sizeof(*s));
     if (s == NULL)
         return NULL;
     memset(s, 0, sizeof(*s));
-    s->id = libinput_device_id(path);
+    if (group != NULL)
+    {
+        strncpy(s->group, group, sizeof(s->group) - 1U);
+        s->group[sizeof(s->group) - 1U] = '\0';
+    }
     s->type = (uint8_t)info->type;
     return s;
 }
@@ -220,7 +216,7 @@ dmod_libinput_api_declaration(1.0, int, _feed_post_key, ( libinput_feed_t feed, 
         keystate_reset(&feed->keys);              /* Events were lost: what was held may be up */
     else if (keystate_feed(&feed->keys, g_keymap, event, &out))
     {
-        out.device = feed->id;
+        memcpy(out.group, feed->group, sizeof(out.group));
         queue_event(&out);
     }
     dmosi_mutex_unlock(g_lock);
@@ -234,7 +230,7 @@ dmod_libinput_api_declaration(1.0, int, _feed_post_state, ( libinput_feed_t feed
     libinput_event_t out;
     memset(&out, 0, sizeof(out));
     out.time_ms = now_ms;
-    out.device = feed->id;
+    memcpy(out.group, feed->group, sizeof(out.group));
     out.source = feed->type;
     out.type = LIBINPUT_EVENT_STATE;
     out.u.state = *state;
