@@ -5,8 +5,9 @@ modifiers that choose the layer. libinput has one built in (US letters, digits a
 with shift; shift, ctrl and alt as modifiers; no sticky modifiers). A file (`.ini`) goes
 **on top** of it: the layers it names are added, the ones it does not stay.
 
-Load one with `libinput_keymap_load(path)`, or for `inputd` with the environment variable
-`DMINPUT_KEYMAP`. A file that is not a keymap is refused (`-EINVAL`) and the old keymap stays.
+Load one with `libinput_keymap_load(path)`. Without a call `libinput` uses the file of the environment variable
+`DMINPUT_KEYMAP`, else the keymap the board ships: `/cfg/keymaps/board/keymap.ini` (in dmod-boot the files of
+`configs/board/<board>/keymaps/` go there), when there is one. A file that is not a keymap is refused (`-EINVAL`) and the old keymap stays.
 
 ```ini
 [modifiers]
