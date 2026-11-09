@@ -1,5 +1,8 @@
 # dminput
 
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/choco-technologies/dminput/actions/workflows/ci.yml/badge.svg)](https://github.com/choco-technologies/dminput/actions/workflows/ci.yml)
+
 Where the inputs of the system come together.
 
 ```
