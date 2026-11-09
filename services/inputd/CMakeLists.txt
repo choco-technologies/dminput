@@ -1,11 +1,13 @@
 # ======================================================================
 #               inputd - the service of one input device
 # ======================================================================
+# The stack: the peak measured on a T-Deck Pro (dmosi_thread_get_info), with the keymap of the board loaded - the parser of its .ini file runs on
+# this stack - is 2752 bytes; with the 512 of the thread's own overhead 3072 gives 3584, 30 % more than that (2048 overflowed).
 # One instance per input device, started by the device rule in
 # configs/inputd.rules from configs/inputd@.ini.
 set(DMOD_MODULE_NAME        inputd)
 set(DMOD_AUTHOR_NAME        "Patryk Kubiak")
-set(DMOD_STACK_SIZE         2048)
+set(DMOD_STACK_SIZE         3072)
 set(DMOD_PRIORITY           2)
 set(DMOD_DMR_PATH           ${CMAKE_CURRENT_SOURCE_DIR}/inputd.dmr)
 set(DMOD_MAL_IMPLS          )

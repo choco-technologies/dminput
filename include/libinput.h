@@ -106,7 +106,7 @@ dmod_libinput_api(1.0, int, _run, ( const char* path, libinput_stop_t should_sto
 /**
  * The keymap of the keyboards: built in layers (US letters, digits, shift) with the ones
  * of the file on top (see docs/keymap.md). NULL: only the built in one. Without a call the
- * file of $DMINPUT_KEYMAP is used, if there is one.
+ * file of $DMINPUT_KEYMAP is used, else LIBINPUT_BOARD_KEYMAP, if there is one.
  * -ENOENT without the file, -EINVAL for a file that is not a keymap (the old keymap stays).
  */
 dmod_libinput_api(1.0, int, _keymap_load, ( const char* path ));
@@ -144,6 +144,9 @@ dmod_libinput_api(1.0, void, _reader_close, ( libinput_reader_t reader ));
  * a negative errno otherwise.
  */
 dmod_libinput_api(1.0, int, _read, ( libinput_reader_t reader, libinput_event_t* event, uint32_t timeout_ms ));
+
+/** The keymap a board ships: its files of configs/board/<board>/keymaps go to /cfg/keymaps/board (dmod-boot). */
+#define LIBINPUT_BOARD_KEYMAP           "/cfg/keymaps/board/keymap.ini"
 
 /** The timeout that does not end. */
 #define LIBINPUT_FOREVER                0xFFFFFFFFu

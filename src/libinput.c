@@ -255,16 +255,21 @@ dmod_libinput_api_declaration(1.0, int, _keymap_load, ( const char* path ))
     return 0;
 }
 
-/* The file of $DMINPUT_KEYMAP, once, unless a keymap was chosen by libinput_keymap_load() */
+/* The keymap nobody chose: the file of $DMINPUT_KEYMAP, else the one a board ships (LIBINPUT_BOARD_KEYMAP) - once, unless a keymap
+ * was chosen by libinput_keymap_load() */
 void keymap_from_environment(void)
 {
     dmosi_mutex_lock(g_lock);
     bool chosen = g_keymap_chosen;
     g_keymap_chosen = true;
     dmosi_mutex_unlock(g_lock);
+    if (chosen)
+        return;
     const char* path = Dmod_GetEnv("DMINPUT_KEYMAP");
-    if (!chosen && path != NULL && path[0] != '\0' && libinput_keymap_load(path) != 0)
-        DMOD_LOG_WARN("libinput: the keymap %s is not used\n", path);
+    bool given = path != NULL && path[0] != '\0';
+    int ret = libinput_keymap_load(given ? path : LIBINPUT_BOARD_KEYMAP);
+    if (ret != 0 && (given || ret != -ENOENT))
+        DMOD_LOG_WARN("libinput: the keymap %s is not used (%d)\n", given ? path : LIBINPUT_BOARD_KEYMAP, ret);
 }
 
 /* ---- Module ---- */

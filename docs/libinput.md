@@ -43,7 +43,7 @@ A **state** event is the state of a device that reports one, as the driver gave 
 | Function | |
 |----------|-|
 | `libinput_run(path, should_stop)` | Read the node at `path` until `should_stop()` is true (`NULL`: never). 0 after a stop, `-ENOENT` / `-ENOTTY` / `-ENOMEM` when the node cannot be used |
-| `libinput_keymap_load(path)` | The keymap of keyboards: [docs/keymap.md](keymap.md); `NULL`: the built in one. Without a call the file of `$DMINPUT_KEYMAP`, if any |
+| `libinput_keymap_load(path)` | The keymap of keyboards: [docs/keymap.md](keymap.md); `NULL`: the built in one. Without a call the file of `$DMINPUT_KEYMAP`, else the board's `/cfg/keymaps/board/keymap.ini`, if any |
 | `libinput_reader_open()` / `_close(reader)` | A reader of the events (one of a process that is gone is dropped) |
 | `libinput_read(reader, &event, timeout_ms)` | The oldest event. Waits up to `timeout_ms` (0: no wait, `LIBINPUT_FOREVER`). 1: an event, 0: none in time, `< 0`: an error (`-ECANCELED`: the reader was closed) |
 | `libinput_feed_create(group, &info)` / `_destroy` / `_post_key` / `_post_state` | What `libinput_run` is made of: the state of one device (the modifiers of a keyboard), owned by its creator. For tests and for feeding libinput without a node |
