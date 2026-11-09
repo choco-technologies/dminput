@@ -6,9 +6,11 @@
 
 ## What goes through it
 
-- **inputd** (one per input device) registers its device (`libinput_device_add`) and posts what
-  the device reports: raw keys (`libinput_post_key`, the events of `DMDRVI_IOCTL_INPUT_KEY_READ`)
-  or the state of a touch panel / mouse / buttons (`libinput_post_state`).
+- **inputd** (one per input device) calls `libinput_run(path, should_stop)` with the path of its
+  device's node. libinput opens the node, asks what it is, and reads what the device reports -
+  raw keys (`DMDRVI_IOCTL_INPUT_KEY_READ`) or the state of a touch panel / mouse / buttons - until
+  `should_stop` says so. The call is the thread of the device; nothing else of the device is kept
+  anywhere, so a service that crashes leaves nothing behind in libinput.
 - **libinput** translates the keys into characters and queues every event for every reader.
 - A **reader** (dmview, a console) opens itself (`libinput_reader_open`) and takes the events
   (`libinput_read`).
@@ -40,17 +42,16 @@ A **state** event is the state of a device that reports one, as the driver gave 
 
 | Function | |
 |----------|-|
-| `libinput_device_add(path, info, &device)` | Register a device by the path of its node (`-EEXIST`, `-ENOMEM`) |
-| `libinput_device_remove(device)` | Remove it, what it held is forgotten |
-| `libinput_device_find(path)` | The device of a path, 0 when there is none |
-| `libinput_post_key(device, &key_event)` | A raw key event of a keyboard (`dmdrvi_key_event_t`) |
-| `libinput_post_state(device, &state, now_ms)` | The state of a touch panel, mouse or buttons |
-| `libinput_keymap_load(path)` | The keymap of keyboards: [docs/keymap.md](keymap.md); `NULL`: the built in one |
-| `libinput_reader_open()` / `_close(reader)` | A reader of the events |
+| `libinput_run(path, should_stop)` | Read the node at `path` until `should_stop()` is true (`NULL`: never). 0 after a stop, `-ENOENT` / `-ENOTTY` / `-ENOMEM` when the node cannot be used |
+| `libinput_device_id(path)` | What the events of that node carry as `device` (a hash of the path: the same path, the same id; no list of devices exists) |
+| `libinput_keymap_load(path)` | The keymap of keyboards: [docs/keymap.md](keymap.md); `NULL`: the built in one. Without a call the file of `$DMINPUT_KEYMAP`, if any |
+| `libinput_reader_open()` / `_close(reader)` | A reader of the events (one of a process that is gone is dropped) |
 | `libinput_read(reader, &event, timeout_ms)` | The oldest event. Waits up to `timeout_ms` (0: no wait, `LIBINPUT_FOREVER`). 1: an event, 0: none in time, `< 0`: an error (`-ECANCELED`: the reader was closed) |
+| `libinput_feed_create(path, &info)` / `_destroy` / `_post_key` / `_post_state` | What `libinput_run` is made of: the state of one device (the modifiers of a keyboard), owned by its creator. For tests and for feeding libinput without a node |
 
 A reader that has something due (an animation, a timer) reads with the time that is left; after
-an event it drains the rest with timeout 0.
+an event it drains the rest with timeout 0. To tell which device an event is from, compare its
+`device` with `libinput_device_id(path)` of the nodes it is interested in.
 
 ## The queues
 
@@ -60,6 +61,8 @@ an event it drains the rest with timeout 0.
   dropped. A reader that is slow loses events; it never holds back the others or the devices.
 - A raw `DMDRVI_KEY_ACTION_OVERFLOW` of a driver (events were lost, a key seen down may be up)
   makes libinput forget what the keyboard held: the modifiers and the keys that are down.
+- A reader whose process is gone without closing it is dropped, so a crash of a reader does not
+  keep its slot.
 
 ## Keyboards
 

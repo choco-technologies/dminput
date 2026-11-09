@@ -14,15 +14,10 @@ dmod_add_executable(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     src/main.c
 )
 
-# dmdrvi:     the input ioctls (headers).
-# dmosi:      tick count, the stop semaphore.
-# dmvfs:      (+ dmfsi, its headers) the node is opened as a file.
-# libsystemd: graceful stop.
+# libsystemd: graceful stop. The rest is libinput's (libinput_if brings its headers).
 dmod_link_modules(${DMOD_MODULE_NAME}
     dmdrvi@>=2.5
-    dmfsi
     dmosi
-    dmvfs
     libsystemd
 )
 

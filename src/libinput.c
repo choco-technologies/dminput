@@ -3,21 +3,12 @@
 #include <errno.h>
 #include <string.h>
 
-#define MAX_DEVICES     16
 #define MAX_READERS     4
 #define QUEUE_SIZE      32
 
-typedef struct
-{
-    libinput_device_t   id;                 /* 0: the slot is free */
-    char*               path;
-    uint8_t             source;
-    keystate_t          keys;
-} device_t;
-
 struct libinput_reader
 {
-    bool                used;
+    dmosi_process_id_t  pid;                /* Of its owner: a reader of a process that is gone is dropped */
     libinput_event_t    events[QUEUE_SIZE];
     uint32_t            first, count;
     dmosi_semaphore_t   ready;              /* One unit per queued event (and one more to wake a waiter on close) */
@@ -26,10 +17,9 @@ struct libinput_reader
 };
 
 static dmosi_mutex_t        g_lock;
-static device_t             g_devices[MAX_DEVICES];
 static struct libinput_reader* g_readers[MAX_READERS];
 static keymap_t*            g_keymap;
-static libinput_device_t    g_next_device = 1;
+static bool                 g_keymap_chosen;    /* libinput_keymap_load() was called (or the environment looked at) */
 
 /* ---- Readers: queues ---- */
 
@@ -40,6 +30,35 @@ static void reader_free(struct libinput_reader* r)
     Dmod_Free(r);
 }
 
+static dmosi_process_id_t current_pid(void)
+{
+    dmosi_process_t process = dmosi_process_current();
+    return (process != NULL) ? dmosi_process_get_id(process) : 0;
+}
+
+/* A reader of a process that is gone (it did not close it): out of the list; under g_lock */
+static bool owner_gone(const struct libinput_reader* r)
+{
+    return r->pid != 0 && dmosi_process_find_by_id(r->pid) == NULL;
+}
+
+static void drop_dead_readers(void)
+{
+    for (int i = 0; i < MAX_READERS; i++)
+    {
+        struct libinput_reader* r = g_readers[i];
+        if (r != NULL && owner_gone(r))
+        {
+            g_readers[i] = NULL;
+            r->closed = true;
+            if (r->waiters == 0)
+                reader_free(r);
+            else
+                (void)dmosi_semaphore_post(r->ready, 1);
+        }
+    }
+}
+
 /* An event for every reader; under g_lock. A full queue loses its oldest event. */
 static void queue_event(const libinput_event_t* event)
 {
@@ -48,6 +67,11 @@ static void queue_event(const libinput_event_t* event)
         struct libinput_reader* r = g_readers[i];
         if (r == NULL)
             continue;
+        if (r->count == QUEUE_SIZE && owner_gone(r))
+        {
+            drop_dead_readers();                /* Nobody reads it: it would only keep the slot */
+            continue;
+        }
         if (r->count == QUEUE_SIZE)
         {
             r->first = (r->first + 1U) % QUEUE_SIZE;
@@ -72,7 +96,9 @@ dmod_libinput_api_declaration(1.0, libinput_reader_t, _reader_open, ( void ))
         Dmod_Free(r);
         return NULL;
     }
+    r->pid = current_pid();
     dmosi_mutex_lock(g_lock);
+    drop_dead_readers();
     for (int i = 0; i < MAX_READERS; i++)
     {
         if (g_readers[i] == NULL)
@@ -147,124 +173,75 @@ dmod_libinput_api_declaration(1.0, int, _read, ( libinput_reader_t reader, libin
     return ret;
 }
 
-/* ---- Devices ---- */
+/* ---- Feeds: the state of one device, kept by whoever reads it ---- */
 
-static device_t* device_at(libinput_device_t id)
+struct libinput_feed
 {
-    for (int i = 0; id != 0 && i < MAX_DEVICES; i++)
-    {
-        if (g_devices[i].id == id)
-            return &g_devices[i];
-    }
-    return NULL;
+    libinput_device_t   id;
+    uint8_t             type;       /* LIBINPUT_SOURCE_* */
+    keystate_t          keys;
+};
+
+dmod_libinput_api_declaration(1.0, libinput_device_t, _device_id, ( const char* path ))
+{
+    uint32_t hash = 2166136261u;                    /* FNV-1a */
+    for (const char* p = (path != NULL) ? path : ""; *p != '\0'; p++)
+        hash = (hash ^ (uint8_t)*p) * 16777619u;
+    return (hash != 0) ? hash : 1u;
 }
 
-dmod_libinput_api_declaration(1.0, int, _device_add, ( const char* path, const dmdrvi_input_info_t* info, libinput_device_t* device ))
+dmod_libinput_api_declaration(1.0, libinput_feed_t, _feed_create, ( const char* path, const dmdrvi_input_info_t* info ))
 {
-    if (path == NULL || path[0] == '\0' || info == NULL)
+    if (path == NULL || info == NULL)
+        return NULL;
+    struct libinput_feed* s = Dmod_Malloc(sizeof(*s));
+    if (s == NULL)
+        return NULL;
+    memset(s, 0, sizeof(*s));
+    s->id = libinput_device_id(path);
+    s->type = (uint8_t)info->type;
+    return s;
+}
+
+dmod_libinput_api_declaration(1.0, void, _feed_destroy, ( libinput_feed_t feed ))
+{
+    if (feed != NULL)
+        Dmod_Free(feed);
+}
+
+dmod_libinput_api_declaration(1.0, int, _feed_post_key, ( libinput_feed_t feed, const dmdrvi_key_event_t* event ))
+{
+    if (feed == NULL || event == NULL)
         return -EINVAL;
-    int ret = -ENOMEM;
-    dmosi_mutex_lock(g_lock);
-    device_t* free_slot = NULL;
-    for (int i = 0; i < MAX_DEVICES; i++)
-    {
-        if (g_devices[i].id != 0 && strcmp(g_devices[i].path, path) == 0)
-            ret = -EEXIST;
-        else if (g_devices[i].id == 0 && free_slot == NULL)
-            free_slot = &g_devices[i];
-    }
-    if (ret != -EEXIST && free_slot != NULL)
-    {
-        free_slot->path = Dmod_StrDup(path);
-        if (free_slot->path != NULL)
-        {
-            free_slot->source = (uint8_t)info->type;
-            keystate_reset(&free_slot->keys);
-            free_slot->id = g_next_device++;
-            if (g_next_device == 0)
-                g_next_device = 1;
-            if (device != NULL)
-                *device = free_slot->id;
-            ret = 0;
-        }
-    }
-    dmosi_mutex_unlock(g_lock);
-    return ret;
-}
-
-dmod_libinput_api_declaration(1.0, void, _device_remove, ( libinput_device_t device ))
-{
-    dmosi_mutex_lock(g_lock);
-    device_t* d = device_at(device);
-    if (d != NULL)
-    {
-        Dmod_Free(d->path);
-        memset(d, 0, sizeof(*d));
-    }
-    dmosi_mutex_unlock(g_lock);
-}
-
-dmod_libinput_api_declaration(1.0, libinput_device_t, _device_find, ( const char* path ))
-{
-    libinput_device_t found = 0;
-    if (path == NULL)
-        return 0;
-    dmosi_mutex_lock(g_lock);
-    for (int i = 0; i < MAX_DEVICES; i++)
-    {
-        if (g_devices[i].id != 0 && strcmp(g_devices[i].path, path) == 0)
-            found = g_devices[i].id;
-    }
-    dmosi_mutex_unlock(g_lock);
-    return found;
-}
-
-/* ---- What the devices post ---- */
-
-dmod_libinput_api_declaration(1.0, int, _post_key, ( libinput_device_t device, const dmdrvi_key_event_t* event ))
-{
-    if (event == NULL)
-        return -EINVAL;
-    int ret = 0;
-    dmosi_mutex_lock(g_lock);
-    device_t* d = device_at(device);
     libinput_event_t out;
     memset(&out, 0, sizeof(out));
-    if (d == NULL)
-        ret = -ENODEV;
-    else if (event->action == DMDRVI_KEY_ACTION_OVERFLOW)
-        keystate_reset(&d->keys);               /* Events were lost: what was held may be up */
-    else if (keystate_feed(&d->keys, g_keymap, event, &out))
+    dmosi_mutex_lock(g_lock);
+    if (event->action == DMDRVI_KEY_ACTION_OVERFLOW)
+        keystate_reset(&feed->keys);              /* Events were lost: what was held may be up */
+    else if (keystate_feed(&feed->keys, g_keymap, event, &out))
     {
-        out.device = d->id;
+        out.device = feed->id;
         queue_event(&out);
     }
     dmosi_mutex_unlock(g_lock);
-    return ret;
+    return 0;
 }
 
-dmod_libinput_api_declaration(1.0, int, _post_state, ( libinput_device_t device, const dmdrvi_input_state_t* state, uint32_t now_ms ))
+dmod_libinput_api_declaration(1.0, int, _feed_post_state, ( libinput_feed_t feed, const dmdrvi_input_state_t* state, uint32_t now_ms ))
 {
-    if (state == NULL)
+    if (feed == NULL || state == NULL)
         return -EINVAL;
-    int ret = 0;
+    libinput_event_t out;
+    memset(&out, 0, sizeof(out));
+    out.time_ms = now_ms;
+    out.device = feed->id;
+    out.source = feed->type;
+    out.type = LIBINPUT_EVENT_STATE;
+    out.u.state = *state;
     dmosi_mutex_lock(g_lock);
-    device_t* d = device_at(device);
-    if (d == NULL)
-        ret = -ENODEV;
-    else
-    {
-        libinput_event_t out;
-        memset(&out, 0, sizeof(out));
-        out.time_ms = now_ms;
-        out.device = d->id;
-        out.source = d->source;
-        out.type = LIBINPUT_EVENT_STATE;
-        out.u.state = *state;
-        queue_event(&out);
-    }
+    queue_event(&out);
     dmosi_mutex_unlock(g_lock);
-    return ret;
+    return 0;
 }
 
 dmod_libinput_api_declaration(1.0, int, _keymap_load, ( const char* path ))
@@ -276,11 +253,22 @@ dmod_libinput_api_declaration(1.0, int, _keymap_load, ( const char* path ))
     dmosi_mutex_lock(g_lock);
     keymap_t* old = g_keymap;
     g_keymap = keymap;
-    for (int i = 0; i < MAX_DEVICES; i++)
-        keystate_reset(&g_devices[i].keys);     /* (what they held was by the old keymap) */
+    g_keymap_chosen = true;
     dmosi_mutex_unlock(g_lock);
     keymap_destroy(old);
     return 0;
+}
+
+/* The file of $DMINPUT_KEYMAP, once, unless a keymap was chosen by libinput_keymap_load() */
+void keymap_from_environment(void)
+{
+    dmosi_mutex_lock(g_lock);
+    bool chosen = g_keymap_chosen;
+    g_keymap_chosen = true;
+    dmosi_mutex_unlock(g_lock);
+    const char* path = Dmod_GetEnv("DMINPUT_KEYMAP");
+    if (!chosen && path != NULL && path[0] != '\0' && libinput_keymap_load(path) != 0)
+        DMOD_LOG_WARN("libinput: the keymap %s is not used\n", path);
 }
 
 /* ---- Module ---- */
@@ -300,8 +288,6 @@ int dmod_deinit(void)
         if (g_readers[i] != NULL)
             libinput_reader_close(g_readers[i]);
     }
-    for (int i = 0; i < MAX_DEVICES; i++)
-        libinput_device_remove(g_devices[i].id);
     keymap_destroy(g_keymap);
     g_keymap = NULL;
     if (g_lock != NULL)

@@ -17,7 +17,8 @@ extern "C" {
  *
  *   driver --(node)--> inputd (one per device) --> libinput --> reader (dmview, ...)
  *
- * inputd reads the raw events of its device and posts them here. libinput
+ * inputd calls libinput_run() with the path of its device's node; libinput reads the raw
+ * events of the node itself. It
  *  - translates the raw keys of a keyboard into characters (a keymap, the layers
  *    of the modifier keys: shift, alt, sym, ctrl, caps),
  *  - mixes what every device reports into one stream, each event saying where it came from,
@@ -57,8 +58,8 @@ typedef enum
 #define LIBINPUT_MOD_SYM                (1u << 3)
 #define LIBINPUT_MOD_CAPS               (1u << 4)
 
-/** A device registered in libinput; 0 is none. */
-typedef uint16_t libinput_device_t;
+/** Where an event comes from: libinput_device_id() of the path of the node. */
+typedef uint32_t libinput_device_t;
 
 /** A reader of the events. */
 typedef struct libinput_reader* libinput_reader_t;
@@ -67,7 +68,7 @@ typedef struct libinput_reader* libinput_reader_t;
 typedef struct
 {
     uint32_t            time_ms;    /**< When it happened (the driver's clock for a key) */
-    libinput_device_t   device;     /**< Where from: see libinput_device_find() */
+    libinput_device_t   device;     /**< Where from: libinput_device_id() of the node's path */
     uint8_t             source;     /**< libinput_source_t */
     uint8_t             type;       /**< libinput_event_type_t */
     union
@@ -83,31 +84,51 @@ typedef struct
     } u;
 } libinput_event_t;
 
-/* ---- Devices (what inputd does) -------------------------------------------------------------------------------------- */
+/* ---- The service (what inputd does) ---------------------------------------------------------------------------------- */
+
+/** Asked again and again while libinput_run() waits: true ends it. */
+typedef bool (*libinput_stop_t)(void);
 
 /**
- * Register a device by the path of its node. -EEXIST when the path is registered, -ENOMEM when there are too many.
+ * Read an input device: opens the node, finds out what it is and posts what it reports to
+ * the readers until `should_stop` says so (or NULL: never) or the node fails. That is all a
+ * service does - one call, the path of the node; it is the thread of the device.
+ *
+ * Nothing of the device is kept anywhere else: when this returns, or the process of the
+ * service is gone, there is nothing of it left in libinput.
+ *
+ * Returns 0 after a stop, a negative errno when the node cannot be used.
  */
-dmod_libinput_api(1.0, int, _device_add, ( const char* path, const dmdrvi_input_info_t* info, libinput_device_t* device ));
+dmod_libinput_api(1.0, int, _run, ( const char* path, libinput_stop_t should_stop ));
 
-/** Remove a device: what it was holding is forgotten. */
-dmod_libinput_api(1.0, void, _device_remove, ( libinput_device_t device ));
-
-/** The device registered under this path, 0 when there is none (yet). */
-dmod_libinput_api(1.0, libinput_device_t, _device_find, ( const char* path ));
-
-/** A raw key event of a keyboard: it is translated and queued for the readers. */
-dmod_libinput_api(1.0, int, _post_key, ( libinput_device_t device, const dmdrvi_key_event_t* event ));
-
-/** The state of a device that reports one: queued for the readers as it is. */
-dmod_libinput_api(1.0, int, _post_state, ( libinput_device_t device, const dmdrvi_input_state_t* state, uint32_t now_ms ));
+/** What the events of the node at `path` carry as their `device` (the same for the same path, never 0). */
+dmod_libinput_api(1.0, libinput_device_t, _device_id, ( const char* path ));
 
 /**
  * The keymap of the keyboards: built in layers (US letters, digits, shift) with the ones
- * of the file on top (see docs/keymap.md). NULL: only the built in one.
+ * of the file on top (see docs/keymap.md). NULL: only the built in one. Without a call the
+ * file of $DMINPUT_KEYMAP is used, if there is one.
  * -ENOENT without the file, -EINVAL for a file that is not a keymap (the old keymap stays).
  */
 dmod_libinput_api(1.0, int, _keymap_load, ( const char* path ));
+
+/* ---- Sources (what libinput_run is made of) ------------------------------------------------------------------------ */
+
+/**
+ * The state of one device that libinput_run() keeps while it reads it (the modifiers of a
+ * keyboard) - and the way to feed libinput without a node: tests, a driver that is not
+ * behind one. It belongs to whoever created it and to nobody else.
+ */
+typedef struct libinput_feed* libinput_feed_t;
+
+dmod_libinput_api(1.0, libinput_feed_t, _feed_create, ( const char* path, const dmdrvi_input_info_t* info ));
+dmod_libinput_api(1.0, void, _feed_destroy, ( libinput_feed_t feed ));
+
+/** A raw key event of a keyboard: translated and queued for the readers. */
+dmod_libinput_api(1.0, int, _feed_post_key, ( libinput_feed_t feed, const dmdrvi_key_event_t* event ));
+
+/** The state of a device that reports one: queued for the readers as it is. */
+dmod_libinput_api(1.0, int, _feed_post_state, ( libinput_feed_t feed, const dmdrvi_input_state_t* state, uint32_t now_ms ));
 
 /* ---- Readers (what dmview does) -------------------------------------------------------------------------------------- */
 

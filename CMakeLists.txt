@@ -50,6 +50,7 @@ set(DMOD_DIF_IMPLS          )
 
 dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     src/libinput.c
+    src/run.c
     src/keymap.c
     src/keys.c
 )
@@ -65,8 +66,10 @@ target_include_directories(${DMOD_MODULE_NAME}_if INTERFACE
 
 dmod_link_modules(${DMOD_MODULE_NAME}
     dmdrvi@>=2.5
+    dmfsi
     dmini
     dmosi
+    dmvfs
 )
 
 enable_testing()

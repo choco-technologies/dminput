@@ -6,6 +6,7 @@
 /* A keyboard in libinput and a reader of what it posts: every step makes its own */
 typedef struct
 {
+    libinput_feed_t   feed;
     libinput_device_t device;
     libinput_reader_t reader;
     uint32_t          time;
@@ -17,8 +18,9 @@ static void rig_open(rig_t* rig, const char* path, dmdrvi_input_type_t type)
     memset(&info, 0, sizeof(info));
     info.type = type;
     rig->time = 0;
-    rig->device = 0;
-    DMOD_TEST_EXPECT_EQ(libinput_device_add(path, &info, &rig->device), 0);
+    rig->feed = libinput_feed_create(path, &info);
+    DMOD_TEST_EXPECT_NOT_NULL(rig->feed);
+    rig->device = libinput_device_id(path);
     rig->reader = libinput_reader_open();
     DMOD_TEST_EXPECT_NOT_NULL(rig->reader);
 }
@@ -26,14 +28,14 @@ static void rig_open(rig_t* rig, const char* path, dmdrvi_input_type_t type)
 static void rig_close(rig_t* rig)
 {
     libinput_reader_close(rig->reader);
-    libinput_device_remove(rig->device);
+    libinput_feed_destroy(rig->feed);
     (void)libinput_keymap_load(NULL);                   /* The built in keymap again */
 }
 
 static void post(rig_t* rig, uint16_t code, uint8_t action)
 {
     dmdrvi_key_event_t event = { ++rig->time, code, action, 0 };
-    DMOD_TEST_EXPECT_EQ(libinput_post_key(rig->device, &event), 0);
+    DMOD_TEST_EXPECT_EQ(libinput_feed_post_key(rig->feed, &event), 0);
 }
 
 static void tap(rig_t* rig, uint16_t code)
@@ -245,7 +247,7 @@ DMOD_TEST_STEP(a_state_goes_through_as_it_is)
     state.contact_count = 1;
     state.contacts[0].x = 120;
     state.contacts[0].y = 160;
-    DMOD_TEST_EXPECT_EQ(libinput_post_state(rig.device, &state, 42), 0);
+    DMOD_TEST_EXPECT_EQ(libinput_feed_post_state(rig.feed, &state, 42), 0);
     libinput_event_t event = next(&rig);
     DMOD_TEST_EXPECT_EQ(event.type, LIBINPUT_EVENT_STATE);
     DMOD_TEST_EXPECT_EQ(event.source, LIBINPUT_SOURCE_TOUCH);
@@ -260,18 +262,13 @@ DMOD_TEST_STEP(devices_are_told_apart)
     rig_t keys, touch;
     rig_open(&keys, "/dev/kbd", DMDRVI_INPUT_TYPE_KEYBOARD);
     rig_open(&touch, "/dev/touch", DMDRVI_INPUT_TYPE_TOUCHSCREEN);
-    DMOD_TEST_EXPECT_EQ(libinput_device_find("/dev/kbd"), keys.device);
-    DMOD_TEST_EXPECT_EQ(libinput_device_find("/dev/touch"), touch.device);
-    DMOD_TEST_EXPECT_EQ(libinput_device_find("/dev/nothing"), 0);
-    dmdrvi_input_info_t info;
-    memset(&info, 0, sizeof(info));
-    libinput_device_t again = 0;
-    DMOD_TEST_EXPECT_EQ(libinput_device_add("/dev/kbd", &info, &again), -17);   /* -EEXIST */
+    DMOD_TEST_EXPECT_EQ(libinput_device_id("/dev/kbd"), keys.device);    /* the same path, the same id: nothing is kept */
+    DMOD_TEST_EXPECT_TRUE(keys.device != 0 && touch.device != 0 && keys.device != touch.device);
 
     tap(&keys, DMDRVI_KEY_A);                                            /* one reader of all: events of both come */
     dmdrvi_input_state_t state;
     memset(&state, 0, sizeof(state));
-    DMOD_TEST_EXPECT_EQ(libinput_post_state(touch.device, &state, 1), 0);
+    DMOD_TEST_EXPECT_EQ(libinput_feed_post_state(touch.feed, &state, 1), 0);
     libinput_event_t a = next(&keys);
     libinput_event_t b = next(&keys);
     libinput_event_t c = next(&keys);
@@ -280,11 +277,15 @@ DMOD_TEST_STEP(devices_are_told_apart)
     DMOD_TEST_EXPECT_EQ(c.device, touch.device);
     drain(&touch);
 
-    libinput_device_remove(keys.device);                                 /* a device that is gone gets no events */
-    dmdrvi_key_event_t event = { 1, DMDRVI_KEY_A, DMDRVI_KEY_ACTION_DOWN, 0 };
-    DMOD_TEST_EXPECT_EQ(libinput_post_key(keys.device, &event), -19);    /* -ENODEV */
+    libinput_feed_destroy(keys.feed);                                /* a source that is gone leaves nothing behind */
     libinput_reader_close(keys.reader);
     rig_close(&touch);
+}
+
+DMOD_TEST_STEP(a_node_that_is_not_there_is_not_run)
+{
+    DMOD_TEST_EXPECT_EQ(libinput_run("/dev/there_is_no_such_node", NULL), -2);   /* -ENOENT */
+    DMOD_TEST_EXPECT_EQ(libinput_run("", NULL), -22);                            /* -EINVAL */
 }
 
 DMOD_TEST_STEP(nothing_is_kept_for_nobody)

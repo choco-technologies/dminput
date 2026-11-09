@@ -7,14 +7,11 @@ feeder - one instance, one thread, per device.
 inputd <device name> [<device node>]      # started from inputd@.ini, see below
 ```
 
-It opens the node (`/dev/<name>` unless given), asks it what it is
-(`DMDRVI_IOCTL_INPUT_GET_INFO`), registers it in libinput, then waits on it
-(`DMDRVI_IOCTL_INPUT_WAIT_EVENT`) and posts what it reports:
-
-- a **keyboard** (`DMDRVI_INPUT_CAP_KEYS`): the raw key events of `DMDRVI_IOCTL_INPUT_KEY_READ`,
-- a **touch panel, a mouse, buttons**: the state of `read()`.
-
-It translates nothing; that is libinput's. It looks for a request to stop every 500 ms.
+It is one call: `libinput_run(<device node>, libsystemd_stop_requested)`. libinput opens the node,
+asks it what it is, waits on it and posts what it reports (the raw keys of a keyboard, the state of
+a touch panel, a mouse or buttons) until libsystemd asks the service to stop - see
+[docs/libinput.md](../../docs/libinput.md). inputd registers nothing and keeps nothing: when it
+ends, or crashes, nothing of the device is left in libinput.
 
 For keyboards the keymap is the file named by the environment variable `DMINPUT_KEYMAP`
 (see [docs/keymap.md](../../docs/keymap.md)); without it the built in one is used.
