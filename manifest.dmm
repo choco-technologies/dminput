@@ -1,0 +1,6 @@
+# Include dynamically generated versions list from latest release
+$include https://github.com/choco-technologies/dminput/releases/download/vlatest/versions.dmm
+
+# Module entries with version placeholder - will be expanded by $version-available
+libinput https://github.com/choco-technologies/dminput/releases/download/v<version>/libinput-v<version>-<arch_name>.zip
+inputd https://github.com/choco-technologies/dminput/releases/download/v<version>/inputd-v<version>-<arch_name>.zip

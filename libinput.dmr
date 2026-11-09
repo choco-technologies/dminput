@@ -1,0 +1,26 @@
+# DMOD Resource File for libinput
+# This file specifies where resources should be installed
+
+# === Core Module ===
+dmf=./${module}.dmf => ${destination}/${module}.dmf [origin=${dmf_dir}/${module}.dmf]
+dmfc=./${module}.dmfc => ${destination}/${module}.dmfc [origin=${build_dir}/dmfc/${module}.dmfc]
+dmd=./${module}.dmd => ${destination}/${module}.dmd [origin=${dmf_dir}/${module}.dmd]
+version=./${module}_version.txt => ${destination}/${module}_version.txt [origin=${dmf_dir}/${module}_version.txt]
+
+# === Documentation ===
+docs=./docs => ${destination}/${module}/docs [origin=${repo_dir}/docs]
+readme=./README.md => ${destination}/${module}/README.md [origin=${repo_dir}/README.md]
+
+# === Header Files ===
+# libinput.h + the generated libinput_defs.h
+inc=./include => ${destination}/${module}/include [origin=${repo_dir}/include] [origin=${build_dir}/${module}_defs.h]
+
+# === Keymaps ===
+# Layers to put over the built in one (docs/keymap.md); loaded with libinput_keymap_load()
+keymaps=./keymaps => ${destination}/${module}/keymaps [origin=${repo_dir}/keymaps]
+
+# === License ===
+license=./LICENSE => ${destination}/${module}/LICENSE [origin=${repo_dir}/LICENSE]
+
+# Adding itself
+dmr=./${module}.dmr => ${destination}/${module}/${module}.dmr [origin=${repo_dir}/${module}.dmr]
