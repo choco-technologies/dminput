@@ -122,7 +122,7 @@ DMOD_TEST_STEP(the_two_shifts_are_one_modifier)
     rig_close(&rig);
 }
 
-#define SYM_KEY     0x100u
+#define SYM_KEY     DMDRVI_KEY_SYM
 
 static void load(const char* dir, const char* file, int expected)
 {
@@ -167,6 +167,24 @@ DMOD_TEST_STEP(a_second_tap_of_shift_locks_the_letters)
     tap(&rig, DMDRVI_KEY_LEFT_SHIFT);                                   /* a third tap unlocks */
     drain(&rig);
     DMOD_TEST_EXPECT_EQ(typed(&rig, DMDRVI_KEY_A), (uint32_t)'a');
+    rig_close(&rig);
+}
+
+DMOD_TEST_STEP(the_built_in_keymap_has_sticky_modifiers_the_sym_layer_and_the_dollar_key)
+{
+    rig_t rig;
+    rig_open(&rig, "panel", DMDRVI_INPUT_TYPE_KEYBOARD);                 /* no file loaded */
+    tap(&rig, DMDRVI_KEY_SYM);
+    drain(&rig);
+    DMOD_TEST_EXPECT_EQ(typed(&rig, DMDRVI_KEY_A + 13u), (uint32_t)',');   /* sym, then N */
+    DMOD_TEST_EXPECT_EQ(typed(&rig, DMDRVI_KEY_A + 13u), (uint32_t)'n');   /* the next key only */
+    tap(&rig, DMDRVI_KEY_SYM);
+    drain(&rig);
+    DMOD_TEST_EXPECT_EQ(typed(&rig, DMDRVI_KEY_MIC), (uint32_t)'0');
+    DMOD_TEST_EXPECT_EQ(typed(&rig, DMDRVI_KEY_DOLLAR), (uint32_t)'$');
+    tap(&rig, DMDRVI_KEY_LEFT_SHIFT);
+    drain(&rig);
+    DMOD_TEST_EXPECT_EQ(typed(&rig, DMDRVI_KEY_A), (uint32_t)'A');
     rig_close(&rig);
 }
 

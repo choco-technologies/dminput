@@ -38,6 +38,7 @@ static uint32_t builtin_char(uint16_t code, bool shift)
     switch (code)
     {
         case DMDRVI_KEY_SPACE: return ' ';
+        case DMDRVI_KEY_DOLLAR: return '$';
         case 0x2D: return shift ? '_' : '-';
         case 0x2E: return shift ? '+' : '=';
         case 0x2F: return shift ? '{' : '[';
@@ -53,6 +54,15 @@ static uint32_t builtin_char(uint16_t code, bool shift)
     }
 }
 
+/* The sym layer of a small keyboard: the symbols printed on its keys, the letters' places (A..Z) and the microphone key (a zero) */
+static uint32_t builtin_sym_char(uint16_t code)
+{
+    static const char by_letter[] = { '*', '!', '9', '5', '2', '6', '/', ':', '-', ';', '\'', '"', '.', ',', '+', '@', '#', '3', '4', '(', '_', '?', '1', '8', ')', '7' };
+    if (key_is_letter(code))
+        return (uint32_t)by_letter[code - DMDRVI_KEY_A];
+    return (code == DMDRVI_KEY_MIC) ? (uint32_t)'0' : 0u;
+}
+
 keymap_t* keymap_create(void)
 {
     keymap_t* km = Dmod_Malloc(sizeof(*km));
@@ -63,6 +73,9 @@ keymap_t* keymap_create(void)
     km->mod_codes[MOD_SHIFT][1] = DMDRVI_KEY_RIGHT_SHIFT;
     km->mod_codes[MOD_CTRL][0] = DMDRVI_KEY_LEFT_CTRL;
     km->mod_codes[MOD_ALT][0] = DMDRVI_KEY_LEFT_ALT;
+    km->mod_codes[MOD_SYM][0] = DMDRVI_KEY_SYM;
+    km->sticky = (1u << MOD_SHIFT) | (1u << MOD_ALT) | (1u << MOD_SYM);     /* a tap arms them for the next key (a small keyboard has no AltGr) */
+    km->lockable = 1u << MOD_SHIFT;                                         /* a second tap locks the capitals */
     return km;
 }
 
@@ -107,6 +120,8 @@ uint32_t keymap_char(const keymap_t* km, uint16_t code, uint8_t layer)
     }
     if (layer == 0)
         return builtin_char(code, false);
+    if (layer == (1u << MOD_SYM))
+        return builtin_sym_char(code);
     return (layer == (1u << MOD_SHIFT)) ? builtin_char(code, true) : 0;
 }
 

@@ -273,21 +273,40 @@ dmod_libinput_api_declaration(1.0, int, _keymap_load, ( const char* path ))
     return 0;
 }
 
-/* The keymap nobody chose: the file of $DMINPUT_KEYMAP, else the one a board ships (LIBINPUT_BOARD_KEYMAP) - once, unless a keymap
- * was chosen by libinput_keymap_load() */
+/* The language of $LANG ("pl_PL.UTF-8", "pl"): its letters up to the first '_', '.', '@' or '-', in lower case, into `out`. false when
+ * there is none or it is English ("C", "POSIX", "en"): the built in keymap is the English one. */
+static bool language_of(const char* lang, char* out, size_t size)
+{
+    size_t n = 0;
+    while (lang != NULL && lang[n] != '\0' && lang[n] != '_' && lang[n] != '.' && lang[n] != '@' && lang[n] != '-')
+    {
+        char c = lang[n];
+        if (n + 1U >= size || c < 'A' || (c > 'Z' && c < 'a') || c > 'z')
+            return false;
+        out[n++] = (c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+    }
+    out[n] = '\0';
+    return n != 0U && strcmp(out, "en") != 0 && strcmp(out, "c") != 0 && strcmp(out, "posix") != 0;
+}
+
+/* The keymap nobody chose: the one of the language of the environment variable LANG (LIBINPUT_KEYMAP_DIR/<language>.ini), English -
+ * the built in one - when there is none - once, unless a keymap was chosen by libinput_keymap_load() */
 void keymap_from_environment(void)
 {
     dmosi_mutex_lock(g_lock);
     bool chosen = g_keymap_chosen;
     g_keymap_chosen = true;
     dmosi_mutex_unlock(g_lock);
-    if (chosen)
+    char language[16];
+    if (chosen || !language_of(Dmod_GetEnv("LANG"), language, sizeof(language)))
         return;
-    const char* path = Dmod_GetEnv("DMINPUT_KEYMAP");
-    bool given = path != NULL && path[0] != '\0';
-    int ret = libinput_keymap_load(given ? path : LIBINPUT_BOARD_KEYMAP);
-    if (ret != 0 && (given || ret != -ENOENT))
-        DMOD_LOG_WARN("libinput: the keymap %s is not used (%d)\n", given ? path : LIBINPUT_BOARD_KEYMAP, ret);
+    char path[sizeof(LIBINPUT_KEYMAP_DIR) + sizeof(language) + 5];      /* the directory, '/', the language, ".ini", the terminator */
+    strcpy(path, LIBINPUT_KEYMAP_DIR "/");
+    strcat(path, language);
+    strcat(path, ".ini");
+    int ret = libinput_keymap_load(path);
+    if (ret != 0)
+        DMOD_LOG_WARN("libinput: no keymap for the language %s (%s: %d), English is used\n", language, path, ret);
 }
 
 /* ---- Module ---- */

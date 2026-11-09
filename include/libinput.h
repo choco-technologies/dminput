@@ -104,9 +104,9 @@ typedef bool (*libinput_stop_t)(void);
 dmod_libinput_api(1.0, int, _run, ( const char* path, libinput_stop_t should_stop ));
 
 /**
- * The keymap of the keyboards: built in layers (US letters, digits, shift) with the ones
- * of the file on top (see docs/keymap.md). NULL: only the built in one. Without a call the
- * file of $DMINPUT_KEYMAP is used, else LIBINPUT_BOARD_KEYMAP, if there is one.
+ * The keymap of the keyboards: built in layers (English: US letters, digits, shift, the sym layer of a small keyboard) with the ones
+ * of the file on top (see docs/keymap.md). NULL: only the built in one. Without a call the language of the environment variable
+ * LANG chooses: LIBINPUT_KEYMAP_DIR/<language>.ini (LANG=pl_PL.UTF-8: pl.ini), the built in English one without LANG.
  * -ENOENT without the file, -EINVAL for a file that is not a keymap (the old keymap stays).
  */
 dmod_libinput_api(1.0, int, _keymap_load, ( const char* path ));
@@ -145,8 +145,8 @@ dmod_libinput_api(1.0, void, _reader_close, ( libinput_reader_t reader ));
  */
 dmod_libinput_api(1.0, int, _read, ( libinput_reader_t reader, libinput_event_t* event, uint32_t timeout_ms ));
 
-/** The keymap a board ships: its files of configs/board/<board>/keymaps go to /cfg/keymaps/board (dmod-boot). */
-#define LIBINPUT_BOARD_KEYMAP           "/cfg/keymaps/board/keymap.ini"
+/** Where the keymaps of the languages are: a `keymap=` entry of a .dmd file puts the files of libinput's package there. */
+#define LIBINPUT_KEYMAP_DIR             "/cfg/keymaps/libinput"
 
 /**
  * Drop everything that waits in the queue of the reader (what it has not taken yet): what was typed while nobody was listening - a
