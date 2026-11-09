@@ -21,7 +21,9 @@ extern "C" {
  * events of the node itself. It
  *  - translates the raw keys of a keyboard into characters (a keymap, the layers
  *    of the modifier keys: shift, alt, sym, ctrl, caps),
- *  - mixes what every device reports into one stream, each event saying where it came from,
+ *  - mixes what every device reports into one stream, each event saying where it came from
+ *    (its source - touch, keyboard, ... - and the friends_group of the device, so a display
+ *    service takes the events of the inputs of its display by comparing the group's name),
  *  - queues it for every reader.
  * A reader asks for events (libinput_read) and nothing else: it does not know what
  * devices there are, how they report or what a keyboard looks like.
@@ -58,8 +60,8 @@ typedef enum
 #define LIBINPUT_MOD_SYM                (1u << 3)
 #define LIBINPUT_MOD_CAPS               (1u << 4)
 
-/** Where an event comes from: libinput_device_id() of the path of the node. */
-typedef uint32_t libinput_device_t;
+/** Longest group name of an event, with the terminator (that of dmdrvi's DMDRVI_IOCTL_DEVFS_GET_GROUP). */
+#define LIBINPUT_GROUP_MAX              32u
 
 /** A reader of the events. */
 typedef struct libinput_reader* libinput_reader_t;
@@ -68,7 +70,7 @@ typedef struct libinput_reader* libinput_reader_t;
 typedef struct
 {
     uint32_t            time_ms;    /**< When it happened (the driver's clock for a key) */
-    libinput_device_t   device;     /**< Where from: libinput_device_id() of the node's path */
+    char                group[LIBINPUT_GROUP_MAX];  /**< The friends_group of the device: what a display service compares with its display's ("" when it has none) */
     uint8_t             source;     /**< libinput_source_t */
     uint8_t             type;       /**< libinput_event_type_t */
     union
@@ -101,9 +103,6 @@ typedef bool (*libinput_stop_t)(void);
  */
 dmod_libinput_api(1.0, int, _run, ( const char* path, libinput_stop_t should_stop ));
 
-/** What the events of the node at `path` carry as their `device` (the same for the same path, never 0). */
-dmod_libinput_api(1.0, libinput_device_t, _device_id, ( const char* path ));
-
 /**
  * The keymap of the keyboards: built in layers (US letters, digits, shift) with the ones
  * of the file on top (see docs/keymap.md). NULL: only the built in one. Without a call the
@@ -121,7 +120,8 @@ dmod_libinput_api(1.0, int, _keymap_load, ( const char* path ));
  */
 typedef struct libinput_feed* libinput_feed_t;
 
-dmod_libinput_api(1.0, libinput_feed_t, _feed_create, ( const char* path, const dmdrvi_input_info_t* info ));
+/** `group`: the friends_group the events of this device carry (NULL: none). */
+dmod_libinput_api(1.0, libinput_feed_t, _feed_create, ( const char* group, const dmdrvi_input_info_t* info ));
 dmod_libinput_api(1.0, void, _feed_destroy, ( libinput_feed_t feed ));
 
 /** A raw key event of a keyboard: translated and queued for the readers. */

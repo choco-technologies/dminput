@@ -7,7 +7,7 @@
 ## What goes through it
 
 - **inputd** (one per input device) calls `libinput_run(path, should_stop)` with the path of its
-  device's node. libinput opens the node, asks what it is, and reads what the device reports -
+  device's node. libinput opens the node, asks what it is and what group it is in, and reads what the device reports -
   raw keys (`DMDRVI_IOCTL_INPUT_KEY_READ`) or the state of a touch panel / mouse / buttons - until
   `should_stop` says so. The call is the thread of the device; nothing else of the device is kept
   anywhere, so a service that crashes leaves nothing behind in libinput.
@@ -20,7 +20,7 @@
 ```c
 typedef struct {
     uint32_t          time_ms;
-    libinput_device_t device;   /* libinput_device_find(path) tells which is which */
+    char              group[32];/* the friends_group of the device ("" when it has none) */
     uint8_t           source;   /* LIBINPUT_SOURCE_TOUCH / _MOUSE / _BUTTONS / _KEYBOARD */
     uint8_t           type;     /* LIBINPUT_EVENT_KEY / _STATE */
     union {
@@ -43,15 +43,15 @@ A **state** event is the state of a device that reports one, as the driver gave 
 | Function | |
 |----------|-|
 | `libinput_run(path, should_stop)` | Read the node at `path` until `should_stop()` is true (`NULL`: never). 0 after a stop, `-ENOENT` / `-ENOTTY` / `-ENOMEM` when the node cannot be used |
-| `libinput_device_id(path)` | What the events of that node carry as `device` (a hash of the path: the same path, the same id; no list of devices exists) |
 | `libinput_keymap_load(path)` | The keymap of keyboards: [docs/keymap.md](keymap.md); `NULL`: the built in one. Without a call the file of `$DMINPUT_KEYMAP`, if any |
 | `libinput_reader_open()` / `_close(reader)` | A reader of the events (one of a process that is gone is dropped) |
 | `libinput_read(reader, &event, timeout_ms)` | The oldest event. Waits up to `timeout_ms` (0: no wait, `LIBINPUT_FOREVER`). 1: an event, 0: none in time, `< 0`: an error (`-ECANCELED`: the reader was closed) |
-| `libinput_feed_create(path, &info)` / `_destroy` / `_post_key` / `_post_state` | What `libinput_run` is made of: the state of one device (the modifiers of a keyboard), owned by its creator. For tests and for feeding libinput without a node |
+| `libinput_feed_create(group, &info)` / `_destroy` / `_post_key` / `_post_state` | What `libinput_run` is made of: the state of one device (the modifiers of a keyboard), owned by its creator. For tests and for feeding libinput without a node |
 
 A reader that has something due (an animation, a timer) reads with the time that is left; after
-an event it drains the rest with timeout 0. To tell which device an event is from, compare its
-`device` with `libinput_device_id(path)` of the nodes it is interested in.
+an event it drains the rest with timeout 0. Which events are a display's: those whose `group` is the name of the display's `friends_group`
+(`DMDRVI_IOCTL_DEVFS_GET_GROUP` on the display's node) - a display service compares the two names
+and does not need to know the devices. libinput asks the group of each node it reads.
 
 ## The queues
 
