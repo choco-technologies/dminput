@@ -106,10 +106,29 @@ dmod_libinput_api(1.0, int, _run, ( const char* path, libinput_stop_t should_sto
 /**
  * The keymap of the keyboards: built in layers (English: US letters, digits, shift, the sym layer of a small keyboard) with the ones
  * of the file on top (see docs/keymap.md). NULL: only the built in one. Without a call the language of the environment variable
- * LANG chooses: LIBINPUT_KEYMAP_DIR/<language>.ini (LANG=pl_PL.UTF-8: pl.ini), the built in English one without LANG.
+ * LANG chooses: LIBINPUT_KEYMAP_DIR/<language>.ini (LANG=pl_PL.UTF-8: pl.ini), the built in English one without LANG
+ * (libinput_keymap_set_language() is the same by the name of a language).
  * -ENOENT without the file, -EINVAL for a file that is not a keymap (the old keymap stays).
  */
 dmod_libinput_api(1.0, int, _keymap_load, ( const char* path ));
+
+/** The longest name of a language, with the terminator. */
+#define LIBINPUT_LANGUAGE_MAX           16
+
+/**
+ * The keymap of a language: the built in English one with LIBINPUT_KEYMAP_DIR/<language>.ini on top. `language` is "pl", "pl_PL.UTF-8"
+ * (the form of LANG) and so on, upper or lower case; NULL, "", "en", "C" and "POSIX" are English. It is what a settings screen calls
+ * to change the layout; the readers get the new keymap with the next key (a modifier held now stays held).
+ * -ENOENT when there is no file of that language, -EINVAL when the name is none, the old keymap stays then.
+ */
+dmod_libinput_api(1.0, int, _keymap_set_language, ( const char* language ));
+
+/**
+ * The language of the keymap in use into `language` (`size` bytes, LIBINPUT_LANGUAGE_MAX are enough): "en" or the one given to
+ * libinput_keymap_set_language() or found in LANG; "" when the keymap is a file loaded by libinput_keymap_load(). -ERANGE when it does
+ * not fit.
+ */
+dmod_libinput_api(1.0, int, _keymap_language, ( char* language, size_t size ));
 
 /* ---- Sources (what libinput_run is made of) ------------------------------------------------------------------------ */
 

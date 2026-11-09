@@ -13,7 +13,8 @@ not stay. The files are **one per language** (`keymaps/<language>.ini`, as `pl.i
 chosen by the environment variable `LANG`: `pl_PL.UTF-8` or `pl` loads `/cfg/keymaps/libinput/pl.ini`
 (`LIBINPUT_KEYMAP_DIR`; a `keymap=` entry of a `.dmd` file puts the file of libinput's package there);
 without `LANG`, or with `en`, `C`, `POSIX`, the built in English keymap is used. A language without a
-file leaves the English one with a warning. `libinput_keymap_load(path)` loads a file by hand;
+file leaves the English one with a warning. `libinput_keymap_set_language("pl")` changes the language at run time (a settings screen) and
+`libinput_keymap_language()` says which is in use. `libinput_keymap_load(path)` loads a file by hand;
 a file that is not a keymap is refused (`-EINVAL`) and the old keymap stays.
 
 ```ini
