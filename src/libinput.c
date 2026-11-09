@@ -132,6 +132,24 @@ dmod_libinput_api_declaration(1.0, void, _reader_close, ( libinput_reader_t read
         reader_free(reader);
 }
 
+dmod_libinput_api_declaration(1.0, int, _reader_flush, ( libinput_reader_t reader ))
+{
+    if (reader == NULL)
+        return -EINVAL;
+    dmosi_mutex_lock(g_lock);
+    int dropped = -ECANCELED;
+    if (!reader->closed)
+    {
+        dropped = (int)reader->count;
+        for (uint32_t i = 0; i < reader->count; i++)
+            (void)dmosi_semaphore_wait(reader->ready, 1, 0);        /* (a unit of `ready` goes with each event) */
+        reader->first = 0;
+        reader->count = 0;
+    }
+    dmosi_mutex_unlock(g_lock);
+    return dropped;
+}
+
 /* Take the oldest event; under g_lock, a unit of `ready` taken */
 static void take_event(struct libinput_reader* r, libinput_event_t* event)
 {

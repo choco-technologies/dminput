@@ -335,6 +335,29 @@ DMOD_TEST_STEP(a_full_queue_loses_the_oldest_and_readers_have_their_own)
     rig_close(&rig);
 }
 
+DMOD_TEST_STEP(a_flush_drops_what_waits)
+{
+    rig_t rig;
+    rig_open(&rig, "panel", DMDRVI_INPUT_TYPE_KEYBOARD);
+    libinput_reader_t other = libinput_reader_open();
+    DMOD_TEST_EXPECT_NOT_NULL(other);
+    libinput_event_t event;
+    DMOD_TEST_EXPECT_EQ(libinput_reader_flush(rig.reader), 0);           /* nothing waits: nothing dropped */
+    tap(&rig, DMDRVI_KEY_A);
+    tap(&rig, DMDRVI_KEY_A + 1u);                                        /* 4 events for each reader */
+    DMOD_TEST_EXPECT_EQ(libinput_reader_flush(rig.reader), 4);
+    DMOD_TEST_EXPECT_EQ(libinput_read(rig.reader, &event, 0), 0);        /* what was typed before is gone... */
+    DMOD_TEST_EXPECT_EQ(libinput_read(rig.reader, &event, 20), 0);       /* ... also for a reader that waits */
+    DMOD_TEST_EXPECT_EQ(libinput_read(other, &event, 0), 1);             /* the queue of another reader is its own */
+    DMOD_TEST_EXPECT_EQ(event.u.key.codepoint, (uint32_t)'a');
+    tap(&rig, DMDRVI_KEY_A + 2u);                                        /* the next ones come */
+    DMOD_TEST_EXPECT_EQ(libinput_read(rig.reader, &event, 0), 1);
+    DMOD_TEST_EXPECT_EQ(event.u.key.codepoint, (uint32_t)'c');
+    DMOD_TEST_EXPECT_EQ(libinput_reader_flush(NULL), -22);               /* -EINVAL */
+    libinput_reader_close(other);
+    rig_close(&rig);
+}
+
 DMOD_TEST_STEP(reading_waits_up_to_the_timeout)
 {
     rig_t rig;
