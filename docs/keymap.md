@@ -3,22 +3,21 @@
 What a key gives is the sum of three layers, put one over the other:
 
 1. **The built in keymap** of an ordinary keyboard: US letters, digits and punctuation with shift; shift, ctrl and alt as modifiers.
-2. **The layout** of the keyboard: which keys it has and how they behave. A small keyboard with a Sym key and no AltGr (`compact`) has
-   sticky modifiers (a tap arms the modifier for the next key: sym, then `N` is a comma), a second tap of shift locks the capitals and the
-   symbols printed on its keys are the **sym** layer; a keypad (`numeric`) has digits and four operations. An ordinary PC keyboard
-   (`full`, the default) needs none.
+2. **The layout** of the keyboard: which keys it has and how they behave. A keypad (`numeric`) has digits and four
+   operations. A small keyboard with a Sym key and no AltGr has sticky modifiers (a tap arms the modifier for the next key: sym, then `N` is a
+   comma), a locked shift and the symbols printed on its keys as the **sym** layer - but that is the layout of *that* keyboard, so it is a file
+   of its driver (the T-Deck Pro: `dmtca8418`, `layouts/t-deck-pro.ini`). An ordinary PC keyboard (`full`, the default) needs none.
 3. **The language**: the letters with accents and the like (`pl`: Polish letters on alt), the same for every keyboard.
 
 ## The layout of a keyboard
 
 The driver says it in its info (`dmdrvi_input_info_t`): `layout` (a name) and `module` (the module of the driver). libinput looks for
-`<layout>.ini` first among the files the module ships (`/cfg/layouts/<module>/`), then among its own (`/cfg/layouts/libinput/`: `compact`,
-`numeric`). A driver with a keyboard nobody else has brings its file with it - a `layout=` entry of the `.dmd` file puts it there - and
-can **extend** a ready layout instead of writing everything:
+`<layout>.ini` first among the files the module ships (`/cfg/layouts/<module>/`), then among its own (`/cfg/layouts/libinput/`: `numeric`). A driver with a keyboard nobody else has brings its file with it - a `layout=` entry of the `.dmd` file puts it there - and
+can **extend** another layout (its own, or one of libinput) instead of writing everything:
 
 ```ini
 [layout]
-extends=compact         ; the layouts it extends are read first (4 deep)
+extends=t-deck-pro      ; the layouts it extends are read first (4 deep)
 
 [sym]
 0x110=%                 ; a key of its own (the driver gives it a code from DMDRVI_KEY_VENDOR_BASE + 0x10)
@@ -72,5 +71,5 @@ W=1
 
 The code of a key is what the driver says (USB HID usages and the codes of dmdrvi for the keys that
 have none). [`configs/keymaps/pl.ini`](../configs/keymaps/pl.ini) adds the Polish letters on alt,
-[`configs/layouts/compact.ini`](../configs/layouts/compact.ini) is the layout of a small keyboard,
-[`configs/layouts/numeric.ini`](../configs/layouts/numeric.ini) that of a keypad.
+[`configs/layouts/numeric.ini`](../configs/layouts/numeric.ini) is the layout of a keypad; the layout of a small keyboard with a Sym key
+is that of the T-Deck Pro in dmtca8418 (`configs/layouts/t-deck-pro.ini`).

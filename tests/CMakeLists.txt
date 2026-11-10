@@ -21,11 +21,11 @@ target_link_libraries(${DMOD_MODULE_NAME}
     libinput_if
 )
 
-# The cfg directory of the tests (DMINPUT_CFG_DIR): the files libinput's package brings (keymaps/libinput, layouts/libinput) and a
-# layout of a driver (layouts/mydrv)
+# The cfg directory of the tests (DMINPUT_CFG_DIR): the files libinput's package brings (keymaps/libinput, layouts/libinput) with a
+# layout of a small keyboard (compact), and the layouts of a driver (layouts/mydrv)
 set(LIBINPUT_TEST_CFG "${CMAKE_CURRENT_BINARY_DIR}/cfg")
 file(GLOB _keymaps CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/configs/keymaps/*.ini")
-file(GLOB _layouts CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/configs/layouts/*.ini")
+file(GLOB _layouts CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/configs/layouts/*.ini" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cfg/layouts/libinput/*.ini")
 file(GLOB _driver_layouts CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cfg/layouts/mydrv/*.ini")
 file(COPY ${_keymaps} DESTINATION "${LIBINPUT_TEST_CFG}/keymaps/libinput")
 file(COPY ${_layouts} DESTINATION "${LIBINPUT_TEST_CFG}/layouts/libinput")

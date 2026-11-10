@@ -17,7 +17,7 @@ inc=./include => ${destination}/${module}/include [origin=${repo_dir}/include] [
 
 # === Keymaps and layouts ===
 # configs/keymaps/<language>.ini go over the built in keymap, configs/layouts/<layout>.ini say what a kind of keyboard has (docs/keymap.md).
-# A .dmd file picks them: "libinput keymap=keymaps/pl.ini", "libinput layout=layouts/compact.ini" (they land in /cfg/keymaps/libinput and
+# A .dmd file picks them: "libinput keymap=keymaps/pl.ini", "libinput layout=layouts/numeric.ini" (they land in /cfg/keymaps/libinput and
 # /cfg/layouts/libinput, where the language of LANG and the layout a keyboard names are looked for)
 configs=./configs => ${destination}/${module}/configs [origin=${repo_dir}/configs]
 
