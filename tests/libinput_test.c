@@ -201,6 +201,8 @@ DMOD_TEST_STEP(the_language_of_the_keymap_is_chosen_by_name)
     DMOD_TEST_EXPECT_TRUE(strcmp(language, "en") == 0);
     DMOD_TEST_EXPECT_EQ(libinput_keymap_set_language("p1"), -EINVAL);            /* not a language */
     DMOD_TEST_EXPECT_EQ(libinput_keymap_set_language("/etc/x"), -EINVAL);
+    load(LIBINPUT_KEYMAPS_DIR, "en.ini", 0);                                     /* the file of English changes nothing */
+    DMOD_TEST_EXPECT_EQ(typed(&rig, DMDRVI_KEY_A), (uint32_t)'a');
     load(LIBINPUT_KEYMAPS_DIR, "pl.ini", 0);                                     /* a file: none of the languages */
     DMOD_TEST_EXPECT_EQ(libinput_keymap_language(language, sizeof(language)), 0);
     DMOD_TEST_EXPECT_TRUE(language[0] == '\0');
