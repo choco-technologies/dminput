@@ -12,16 +12,29 @@ typedef struct
     uint32_t          time;
 } rig_t;
 
-static void rig_open(rig_t* rig, const char* group, dmdrvi_input_type_t type)
+/* `module` and `layout` are what the keyboard says of itself in its info (NULL: nothing) */
+static void rig_open_layout(rig_t* rig, const char* group, dmdrvi_input_type_t type, const char* module, const char* layout)
 {
     dmdrvi_input_info_t info;
     memset(&info, 0, sizeof(info));
     info.type = type;
+    if (type == DMDRVI_INPUT_TYPE_KEYBOARD)
+        info.capabilities = DMDRVI_INPUT_CAP_KEYS;
+    if (module != NULL)
+        strcpy(info.module, module);
+    if (layout != NULL)
+        strcpy(info.layout, layout);
+    (void)Dmod_SetEnv("DMINPUT_CFG_DIR", LIBINPUT_TEST_CFG, 1);
     rig->time = 0;
     rig->feed = libinput_feed_create(group, &info);
     DMOD_TEST_EXPECT_NOT_NULL(rig->feed);
     rig->reader = libinput_reader_open();
     DMOD_TEST_EXPECT_NOT_NULL(rig->reader);
+}
+
+static void rig_open(rig_t* rig, const char* group, dmdrvi_input_type_t type)
+{
+    rig_open_layout(rig, group, type, NULL, NULL);
 }
 
 static void rig_close(rig_t* rig)
@@ -171,10 +184,10 @@ DMOD_TEST_STEP(a_second_tap_of_shift_locks_the_letters)
     rig_close(&rig);
 }
 
-DMOD_TEST_STEP(the_built_in_keymap_has_sticky_modifiers_the_sym_layer_and_the_dollar_key)
+DMOD_TEST_STEP(a_layout_gives_a_small_keyboard_its_sticky_modifiers_and_the_sym_layer)
 {
     rig_t rig;
-    rig_open(&rig, "panel", DMDRVI_INPUT_TYPE_KEYBOARD);                 /* no file loaded */
+    rig_open_layout(&rig, "panel", DMDRVI_INPUT_TYPE_KEYBOARD, "mydrv", "compact");   /* the one of libinput: mydrv has none */
     tap(&rig, DMDRVI_KEY_SYM);
     drain(&rig);
     DMOD_TEST_EXPECT_EQ(typed(&rig, DMDRVI_KEY_A + 13u), (uint32_t)',');   /* sym, then N */
@@ -189,18 +202,94 @@ DMOD_TEST_STEP(the_built_in_keymap_has_sticky_modifiers_the_sym_layer_and_the_do
     rig_close(&rig);
 }
 
+DMOD_TEST_STEP(an_ordinary_keyboard_has_neither_sticky_modifiers_nor_the_sym_layer)
+{
+    rig_t plain, unknown;
+    rig_open(&plain, "panel", DMDRVI_INPUT_TYPE_KEYBOARD);                                       /* says nothing of its layout */
+    rig_open_layout(&unknown, "other", DMDRVI_INPUT_TYPE_KEYBOARD, "mydrv", "nowhere");           /* a layout nobody has: a warning */
+    rig_t* rigs[2] = { &plain, &unknown };
+    for (int i = 0; i < 2; i++)
+    {
+        tap(rigs[i], DMDRVI_KEY_SYM);
+        tap(rigs[i], DMDRVI_KEY_LEFT_SHIFT);
+        drain(rigs[i]);
+        DMOD_TEST_EXPECT_EQ(typed(rigs[i], DMDRVI_KEY_A + 13u), (uint32_t)'n');
+        DMOD_TEST_EXPECT_EQ(typed(rigs[i], DMDRVI_KEY_DOLLAR), 0u);
+    }
+    rig_close(&unknown);
+    rig_close(&plain);
+}
+
+DMOD_TEST_STEP(a_driver_ships_a_layout_and_extends_a_ready_one)
+{
+    rig_t rig;
+    rig_open_layout(&rig, "panel", DMDRVI_INPUT_TYPE_KEYBOARD, "mydrv", "custom");   /* cfg/layouts/mydrv/custom.ini: extends compact */
+    tap(&rig, DMDRVI_KEY_SYM);
+    drain(&rig);
+    DMOD_TEST_EXPECT_EQ(typed(&rig, 0x110u), (uint32_t)'%');               /* its own key */
+    tap(&rig, DMDRVI_KEY_SYM);
+    drain(&rig);
+    DMOD_TEST_EXPECT_EQ(typed(&rig, DMDRVI_KEY_A + 13u), (uint32_t)',');   /* the layout it extends */
+    rig_close(&rig);
+    rig_open_layout(&rig, "panel", DMDRVI_INPUT_TYPE_KEYBOARD, "other", "custom");   /* another module has no such layout */
+    tap(&rig, DMDRVI_KEY_SYM);
+    drain(&rig);
+    DMOD_TEST_EXPECT_EQ(typed(&rig, 0x110u), 0u);
+    rig_close(&rig);
+    rig_open_layout(&rig, "panel", DMDRVI_INPUT_TYPE_KEYBOARD, "mydrv", "loop");     /* extends itself: refused, an ordinary keyboard */
+    DMOD_TEST_EXPECT_EQ(typed(&rig, DMDRVI_KEY_A), (uint32_t)'a');
+    rig_close(&rig);
+}
+
+DMOD_TEST_STEP(a_numeric_layout_has_the_keypad)
+{
+    rig_t rig;
+    rig_open_layout(&rig, "pad", DMDRVI_INPUT_TYPE_KEYBOARD, NULL, "numeric");
+    DMOD_TEST_EXPECT_EQ(typed(&rig, 0x59u), (uint32_t)'1');
+    DMOD_TEST_EXPECT_EQ(typed(&rig, 0x62u), (uint32_t)'0');
+    DMOD_TEST_EXPECT_EQ(typed(&rig, 0x57u), (uint32_t)'+');
+    rig_close(&rig);
+}
+
+DMOD_TEST_STEP(the_language_goes_on_top_of_the_layout_of_every_keyboard)
+{
+    rig_t compact, plain;
+    rig_open_layout(&compact, "small", DMDRVI_INPUT_TYPE_KEYBOARD, NULL, "compact");
+    rig_open(&plain, "big", DMDRVI_INPUT_TYPE_KEYBOARD);
+    DMOD_TEST_EXPECT_EQ(libinput_keymap_set_language("pl_PL.UTF-8"), 0);
+    tap(&compact, DMDRVI_KEY_LEFT_ALT);                                      /* sticky on the small one */
+    drain(&compact);
+    DMOD_TEST_EXPECT_EQ(typed(&compact, DMDRVI_KEY_A), 0x0105u);             /* ą */
+    post(&plain, DMDRVI_KEY_LEFT_ALT, DMDRVI_KEY_ACTION_DOWN);               /* held on the big one */
+    drain(&plain);
+    DMOD_TEST_EXPECT_EQ(typed(&plain, DMDRVI_KEY_A), 0x0105u);
+    post(&plain, DMDRVI_KEY_LEFT_ALT, DMDRVI_KEY_ACTION_UP);
+    tap(&compact, DMDRVI_KEY_SYM);                                           /* the layout is still there */
+    drain(&compact);
+    DMOD_TEST_EXPECT_EQ(typed(&compact, DMDRVI_KEY_A + 13u), (uint32_t)',');
+    DMOD_TEST_EXPECT_EQ(libinput_keymap_set_language("en"), 0);              /* ... and English has no alt letters */
+    tap(&compact, DMDRVI_KEY_LEFT_ALT);
+    drain(&compact);
+    DMOD_TEST_EXPECT_EQ(typed(&compact, DMDRVI_KEY_A), 0u);
+    rig_close(&plain);
+    rig_close(&compact);
+}
+
 DMOD_TEST_STEP(the_language_of_the_keymap_is_chosen_by_name)
 {
     char language[LIBINPUT_LANGUAGE_MAX];
     rig_t rig;
     rig_open(&rig, "panel", DMDRVI_INPUT_TYPE_KEYBOARD);
+    DMOD_TEST_EXPECT_EQ(libinput_keymap_set_language("EN"), 0);
     DMOD_TEST_EXPECT_EQ(libinput_keymap_language(language, sizeof(language)), 0);
     DMOD_TEST_EXPECT_TRUE(strcmp(language, "en") == 0);                          /* the built in one */
-    DMOD_TEST_EXPECT_EQ(libinput_keymap_set_language("pl_PL.UTF-8"), -ENOENT);   /* no /cfg here: the old keymap stays */
+    DMOD_TEST_EXPECT_EQ(libinput_keymap_set_language("xx"), -ENOENT);            /* no file of it: the old keymap stays */
     DMOD_TEST_EXPECT_EQ(libinput_keymap_language(language, sizeof(language)), 0);
     DMOD_TEST_EXPECT_TRUE(strcmp(language, "en") == 0);
     DMOD_TEST_EXPECT_EQ(libinput_keymap_set_language("p1"), -EINVAL);            /* not a language */
     DMOD_TEST_EXPECT_EQ(libinput_keymap_set_language("/etc/x"), -EINVAL);
+    load(LIBINPUT_KEYMAPS_DIR, "en.ini", 0);                                     /* the file of English changes nothing */
+    DMOD_TEST_EXPECT_EQ(typed(&rig, DMDRVI_KEY_A), (uint32_t)'a');
     load(LIBINPUT_KEYMAPS_DIR, "pl.ini", 0);                                     /* a file: none of the languages */
     DMOD_TEST_EXPECT_EQ(libinput_keymap_language(language, sizeof(language)), 0);
     DMOD_TEST_EXPECT_TRUE(language[0] == '\0');
@@ -220,6 +309,7 @@ DMOD_TEST_STEP(the_language_of_the_keymap_is_chosen_by_name)
     DMOD_TEST_EXPECT_EQ(libinput_keymap_language(NULL, 4), -EINVAL);
     rig_close(&rig);
 }
+
 
 DMOD_TEST_STEP(a_keymap_file_adds_layers)
 {

@@ -19,11 +19,11 @@ what they mean. libinput interprets them and mixes the devices into one stream; 
 asks for events and gets each with its source (touch, keyboard, buttons, mouse).
 
 See [docs/libinput.md](docs/libinput.md) for the API and the rules of the queues,
-[docs/keymap.md](docs/keymap.md) for the layouts of keyboards.
+[docs/keymap.md](docs/keymap.md) for the layouts of keyboards (one per kind of keyboard, named by its driver) and the languages.
 
 ## Not here yet
 
 - **Touch** is passed through as the state the driver gives (`LIBINPUT_EVENT_STATE`): how it is
   turned into events is still to be decided.
 - **Auto-repeat** of a held key.
-- Gestures, mouse acceleration, a keymap per device.
+- Gestures are not recognised here: touch is passed through as the raw state, dmview turns it into scrolling and taps. Mouse acceleration.

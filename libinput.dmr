@@ -15,10 +15,11 @@ readme=./README.md => ${destination}/${module}/README.md [origin=${repo_dir}/REA
 # libinput.h + the generated libinput_defs.h
 inc=./include => ${destination}/${module}/include [origin=${repo_dir}/include] [origin=${build_dir}/${module}_defs.h]
 
-# === Keymaps ===
-# One file per language, to put over the built in keymap (docs/keymap.md): a .dmd file picks them with
-# "libinput keymap=pl.ini" (they land in /cfg/keymaps/libinput, where the language of $LANG is looked for)
-configs=./configs => ${destination}/${module}/configs [origin=${repo_dir}/keymaps]
+# === Keymaps and layouts ===
+# configs/keymaps/<language>.ini go over the built in keymap, configs/layouts/<layout>.ini say what a kind of keyboard has (docs/keymap.md).
+# A .dmd file picks them: "libinput keymap=keymaps/pl.ini", "libinput layout=layouts/numeric.ini" (they land in /cfg/keymaps/libinput and
+# /cfg/layouts/libinput, where the language of LANG and the layout a keyboard names are looked for)
+configs=./configs => ${destination}/${module}/configs [origin=${repo_dir}/configs]
 
 # === License ===
 license=./LICENSE => ${destination}/${module}/LICENSE [origin=${repo_dir}/LICENSE]

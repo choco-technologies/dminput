@@ -53,6 +53,7 @@ dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     src/libinput.c
     src/run.c
     src/keymap.c
+    src/layout.c
     src/keys.c
 )
 

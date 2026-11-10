@@ -26,11 +26,17 @@ static inline bool key_is_letter(uint16_t code)
 
 typedef struct keymap keymap_t;
 
-/** The built in keymap: US letters, digits and punctuation with shift; shift, ctrl, alt as modifiers. */
+/** The built in keymap of an ordinary keyboard: US letters, digits and punctuation with shift; shift, ctrl, alt as modifiers. */
 keymap_t* keymap_create(void);
 
 /** The built in keymap with the layers of a file on top: NULL and *status when it is not a keymap. */
 keymap_t* keymap_create_from_file(const char* path, int* status);
+
+/** The layers of a file on top of `keymap`: 0, -ENOENT without the file, -EINVAL when it is not a keymap (`keymap` may be half changed). */
+int keymap_apply_file(keymap_t* keymap, const char* path);
+
+/** The `extends=` of the [layout] section of a file (a name, into `name`): false when there is none. */
+bool keymap_file_extends(const char* path, char* name, size_t size);
 
 void keymap_destroy(keymap_t* keymap);
 
@@ -44,10 +50,25 @@ bool keymap_lockable(const keymap_t* keymap, int modifier);
 /** The character (Unicode) of a key in a layer (mask of 1 << MOD_*), 0: none. */
 uint32_t keymap_char(const keymap_t* keymap, uint16_t code, uint8_t layer);
 
+/* ---- layout.c ---- */
+
+/** A name of a language or a layout is safe to be a name of a file. */
+bool layout_name_ok(const char* name);
+
+/** The file of a language (<cfg>/keymaps/libinput/<language>.ini) into `out`: false when the name or the path is bad. */
+bool layout_language_path(char* out, size_t size, const char* language);
+
+/**
+ * The keymap of a keyboard: the built in one, the layout `layout` of the module `module` (one the module ships, else one of libinput,
+ * the ones it extends first; "" or "full": none), then the keymap `file` ("": the language `language`, "" or "en": none). A layout
+ * that is not found is a warning, not an error. NULL: out of memory.
+ */
+keymap_t* layout_build(const char* module, const char* layout, const char* language, const char* file);
+
 /* ---- libinput.c ---- */
 
-/** The keymap of the language of $LANG, once, unless one was chosen by libinput_keymap_load(). */
-void keymap_from_environment(void);
+/** The language of $LANG, once, unless one was chosen by libinput_keymap_set_language() or libinput_keymap_load(). */
+void language_from_environment(void);
 
 /* ---- keys.c ---- */
 

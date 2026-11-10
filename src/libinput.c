@@ -18,9 +18,6 @@ struct libinput_reader
 
 static dmosi_mutex_t        g_lock;
 static struct libinput_reader* g_readers[MAX_READERS];
-static keymap_t*            g_keymap;
-static char                 g_language[LIBINPUT_LANGUAGE_MAX] = "en";  /* of the keymap: "" for a file loaded by path */
-static bool                 g_keymap_chosen;    /* libinput_keymap_load() was called (or the environment looked at) */
 
 /* ---- Readers: queues ---- */
 
@@ -194,12 +191,53 @@ dmod_libinput_api_declaration(1.0, int, _read, ( libinput_reader_t reader, libin
 
 /* ---- Feeds: the state of one device, kept by whoever reads it ---- */
 
+#define MAX_FEEDS       8
+
 struct libinput_feed
 {
     char                group[LIBINPUT_GROUP_MAX];
+    char                layout[DMDRVI_INPUT_LAYOUT_MAX];    /* Of a keyboard: from its info */
+    char                module[DMDRVI_INPUT_MODULE_MAX];
     uint8_t             type;       /* LIBINPUT_SOURCE_* */
+    bool                keyboard;
+    uint32_t            id;         /* Never twice: a feed that went and one that came are not the same */
+    keymap_t*           keymap;     /* Of a keyboard: its layout and the language, rebuilt when the language changes */
     keystate_t          keys;
 };
+
+static struct libinput_feed* g_feeds[MAX_FEEDS];
+static uint32_t             g_feed_id;
+static char                 g_language[LIBINPUT_LANGUAGE_MAX] = "en";  /* of the keymaps: "" when it is a file */
+static char                 g_file[96];                                /* the file that replaces the language ("" when none) */
+static bool                 g_language_chosen;  /* libinput_keymap_set_language() or _load() was called (or the environment looked at) */
+
+static void copy_name(char* to, size_t size, const char* from, size_t from_size)
+{
+    size_t n = 0;
+    while (from != NULL && n < from_size && from[n] != '\0' && n + 1U < size)
+    {
+        to[n] = from[n];
+        n++;
+    }
+    to[n] = '\0';
+}
+
+static bool feed_register(struct libinput_feed* feed)
+{
+    bool done = false;
+    dmosi_mutex_lock(g_lock);
+    feed->id = ++g_feed_id;
+    for (int i = 0; i < MAX_FEEDS && !done; i++)
+    {
+        if (g_feeds[i] == NULL)
+        {
+            g_feeds[i] = feed;
+            done = true;
+        }
+    }
+    dmosi_mutex_unlock(g_lock);
+    return done;
+}
 
 dmod_libinput_api_declaration(1.0, libinput_feed_t, _feed_create, ( const char* group, const dmdrvi_input_info_t* info ))
 {
@@ -209,31 +247,54 @@ dmod_libinput_api_declaration(1.0, libinput_feed_t, _feed_create, ( const char* 
     if (s == NULL)
         return NULL;
     memset(s, 0, sizeof(*s));
-    if (group != NULL)
-    {
-        strncpy(s->group, group, sizeof(s->group) - 1U);
-        s->group[sizeof(s->group) - 1U] = '\0';
-    }
+    copy_name(s->group, sizeof(s->group), group, LIBINPUT_GROUP_MAX);
     s->type = (uint8_t)info->type;
+    s->keyboard = (info->capabilities & DMDRVI_INPUT_CAP_KEYS) != 0;
+    if (s->keyboard)
+    {
+        copy_name(s->layout, sizeof(s->layout), info->layout, DMDRVI_INPUT_LAYOUT_MAX);
+        copy_name(s->module, sizeof(s->module), info->module, DMDRVI_INPUT_MODULE_MAX);
+        dmosi_mutex_lock(g_lock);
+        char language[LIBINPUT_LANGUAGE_MAX], file[sizeof(g_file)];
+        strcpy(language, g_language);
+        strcpy(file, g_file);
+        dmosi_mutex_unlock(g_lock);
+        s->keymap = layout_build(s->module, s->layout, language, file);
+    }
+    if ((s->keyboard && s->keymap == NULL) || !feed_register(s))
+    {
+        keymap_destroy(s->keymap);
+        Dmod_Free(s);
+        return NULL;
+    }
     return s;
 }
 
 dmod_libinput_api_declaration(1.0, void, _feed_destroy, ( libinput_feed_t feed ))
 {
-    if (feed != NULL)
-        Dmod_Free(feed);
+    if (feed == NULL)
+        return;
+    dmosi_mutex_lock(g_lock);
+    for (int i = 0; i < MAX_FEEDS; i++)
+    {
+        if (g_feeds[i] == feed)
+            g_feeds[i] = NULL;
+    }
+    dmosi_mutex_unlock(g_lock);
+    keymap_destroy(feed->keymap);
+    Dmod_Free(feed);
 }
 
 dmod_libinput_api_declaration(1.0, int, _feed_post_key, ( libinput_feed_t feed, const dmdrvi_key_event_t* event ))
 {
-    if (feed == NULL || event == NULL)
+    if (feed == NULL || event == NULL || feed->keymap == NULL)
         return -EINVAL;
     libinput_event_t out;
     memset(&out, 0, sizeof(out));
     dmosi_mutex_lock(g_lock);
     if (event->action == DMDRVI_KEY_ACTION_OVERFLOW)
         keystate_reset(&feed->keys);              /* Events were lost: what was held may be up */
-    else if (keystate_feed(&feed->keys, g_keymap, event, &out))
+    else if (keystate_feed(&feed->keys, feed->keymap, event, &out))
     {
         memcpy(out.group, feed->group, sizeof(out.group));
         queue_event(&out);
@@ -259,31 +320,70 @@ dmod_libinput_api_declaration(1.0, int, _feed_post_state, ( libinput_feed_t feed
     return 0;
 }
 
-/* The keymap `keymap` (of the language `language`: "" for a file that is none of the languages) becomes the keymap of the readers */
-static void keymap_install(keymap_t* keymap, const char* language)
+/* ---- The language and the file of the keymaps ---- */
+
+/* Every keyboard gets a keymap of the language/file that is chosen now (built outside the lock: it reads files); a feed that is gone
+ * meanwhile, or a keymap that cannot be built, leaves things as they are */
+static void keymaps_rebuild(void)
 {
-    dmosi_mutex_lock(g_lock);
-    keymap_t* old = g_keymap;
-    g_keymap = keymap;
-    g_keymap_chosen = true;
-    strcpy(g_language, language);
-    dmosi_mutex_unlock(g_lock);
-    keymap_destroy(old);
+    for (int i = 0; i < MAX_FEEDS; i++)
+    {
+        char layout[DMDRVI_INPUT_LAYOUT_MAX], module[DMDRVI_INPUT_MODULE_MAX], language[LIBINPUT_LANGUAGE_MAX], file[sizeof(g_file)];
+        uint32_t id = 0;
+        dmosi_mutex_lock(g_lock);
+        if (g_feeds[i] != NULL && g_feeds[i]->keyboard)
+        {
+            id = g_feeds[i]->id;
+            strcpy(layout, g_feeds[i]->layout);
+            strcpy(module, g_feeds[i]->module);
+            strcpy(language, g_language);
+            strcpy(file, g_file);
+        }
+        dmosi_mutex_unlock(g_lock);
+        keymap_t* keymap = (id != 0U) ? layout_build(module, layout, language, file) : NULL;
+        if (keymap == NULL)
+            continue;
+        dmosi_mutex_lock(g_lock);
+        keymap_t* old = NULL;
+        if (g_feeds[i] != NULL && g_feeds[i]->id == id)
+        {
+            old = g_feeds[i]->keymap;
+            g_feeds[i]->keymap = keymap;
+            keymap = NULL;
+        }
+        dmosi_mutex_unlock(g_lock);
+        keymap_destroy(old);
+        keymap_destroy(keymap);
+    }
 }
 
-static int keymap_install_from(const char* path, const char* language)
+static void language_choose(const char* language, const char* file)
+{
+    dmosi_mutex_lock(g_lock);
+    strcpy(g_language, language);
+    strcpy(g_file, file);
+    g_language_chosen = true;
+    dmosi_mutex_unlock(g_lock);
+    keymaps_rebuild();
+}
+
+/* The file is read once (and refused when it is not a keymap) before any keyboard uses it */
+static int file_check(const char* path)
 {
     int status = 0;
-    keymap_t* keymap = (path == NULL) ? keymap_create() : keymap_create_from_file(path, &status);
-    if (keymap == NULL)
-        return (status != 0) ? status : -ENOMEM;
-    keymap_install(keymap, language);
-    return 0;
+    keymap_t* keymap = keymap_create_from_file(path, &status);
+    keymap_destroy(keymap);
+    return status;
 }
 
 dmod_libinput_api_declaration(1.0, int, _keymap_load, ( const char* path ))
 {
-    return keymap_install_from(path, (path == NULL) ? "en" : "");
+    if (path != NULL && strlen(path) >= sizeof(g_file))
+        return -ENAMETOOLONG;
+    int ret = (path != NULL) ? file_check(path) : 0;
+    if (ret == 0)
+        language_choose((path == NULL) ? "en" : "", (path == NULL) ? "" : path);
+    return ret;
 }
 
 /* The language of a name like "pl", "pl_PL.UTF-8" or "PL": its letters up to the first '_', '.', '@' or '-', in lower case, into `out`.
@@ -304,17 +404,19 @@ static int language_of(const char* name, char* out, size_t size)
 
 dmod_libinput_api_declaration(1.0, int, _keymap_set_language, ( const char* language ))
 {
-    char name[LIBINPUT_LANGUAGE_MAX];
+    char name[LIBINPUT_LANGUAGE_MAX], path[96];
     int kind = language_of(language, name, sizeof(name));
     if (kind < 0)
         return kind;
     if (kind == 0)
-        return keymap_install_from(NULL, "en");
-    char path[sizeof(LIBINPUT_KEYMAP_DIR) + sizeof(name) + 5];          /* the directory, '/', the language, ".ini", the terminator */
-    strcpy(path, LIBINPUT_KEYMAP_DIR "/");
-    strcat(path, name);
-    strcat(path, ".ini");
-    return keymap_install_from(path, name);
+    {
+        language_choose("en", "");
+        return 0;
+    }
+    int ret = layout_language_path(path, sizeof(path), name) ? file_check(path) : -EINVAL;
+    if (ret == 0)
+        language_choose(name, "");
+    return ret;
 }
 
 dmod_libinput_api_declaration(1.0, int, _keymap_language, ( char* language, size_t size ))
@@ -330,13 +432,13 @@ dmod_libinput_api_declaration(1.0, int, _keymap_language, ( char* language, size
     return ret;
 }
 
-/* The keymap nobody chose: the one of the language of the environment variable LANG, English - the built in one - when there is
- * none; once, unless a keymap was chosen by libinput_keymap_load() or libinput_keymap_set_language() */
-void keymap_from_environment(void)
+/* The language nobody chose: the one of the environment variable LANG, English when there is none; once, unless a language or a
+ * file was chosen by libinput_keymap_set_language() or libinput_keymap_load() */
+void language_from_environment(void)
 {
     dmosi_mutex_lock(g_lock);
-    bool chosen = g_keymap_chosen;
-    g_keymap_chosen = true;
+    bool chosen = g_language_chosen;
+    g_language_chosen = true;
     dmosi_mutex_unlock(g_lock);
     const char* lang = Dmod_GetEnv("LANG");
     if (chosen || lang == NULL)
@@ -352,8 +454,7 @@ int dmod_init(const Dmod_Config_t* Config)
 {
     (void)Config;
     g_lock = dmosi_mutex_create(false);
-    g_keymap = keymap_create();
-    return (g_lock != NULL && g_keymap != NULL) ? 0 : -ENOMEM;
+    return (g_lock != NULL) ? 0 : -ENOMEM;
 }
 
 int dmod_deinit(void)
@@ -363,8 +464,6 @@ int dmod_deinit(void)
         if (g_readers[i] != NULL)
             libinput_reader_close(g_readers[i]);
     }
-    keymap_destroy(g_keymap);
-    g_keymap = NULL;
     if (g_lock != NULL)
         dmosi_mutex_destroy(g_lock);
     g_lock = NULL;
