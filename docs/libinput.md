@@ -43,7 +43,8 @@ A **state** event is the state of a device that reports one, as the driver gave 
 | Function | |
 |----------|-|
 | `libinput_run(path, should_stop)` | Read the node at `path` until `should_stop()` is true (`NULL`: never). 0 after a stop, `-ENOENT` / `-ENOTTY` / `-ENOMEM` when the node cannot be used |
-| `libinput_keymap_load(path)` | The keymap of keyboards: [docs/keymap.md](keymap.md); `NULL`: the built in one. Without a call the file of `$DMINPUT_KEYMAP`, else the board's `/cfg/keymaps/board/keymap.ini`, if any |
+| `libinput_keymap_load(path)` | The keymap of keyboards: [docs/keymap.md](keymap.md); `NULL`: the built in one. Without a call the one of the language of `$LANG` (`pl_PL.UTF-8`: `pl.ini`), English without it |
+| `libinput_keymap_set_language(language)` / `libinput_keymap_language(buf, size)` | Change the layout by the name of a language (`"pl"`, `"pl_PL.UTF-8"`, `NULL`/`"en"`: English; for a settings screen), and read the one in use. `-ENOENT` without the file of the language, `-EINVAL` for a name that is none; the old keymap stays |
 | `libinput_reader_open()` / `_close(reader)` | A reader of the events (one of a process that is gone is dropped) |
 | `libinput_reader_flush(reader)` | Drop what waits in the queue of the reader (what was typed when nobody listened must not come out when somebody starts to); returns how many events went |
 | `libinput_read(reader, &event, timeout_ms)` | The oldest event. Waits up to `timeout_ms` (0: no wait, `LIBINPUT_FOREVER`). 1: an event, 0: none in time, `< 0`: an error (`-ECANCELED`: the reader was closed) |

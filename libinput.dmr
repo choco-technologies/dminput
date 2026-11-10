@@ -16,8 +16,9 @@ readme=./README.md => ${destination}/${module}/README.md [origin=${repo_dir}/REA
 inc=./include => ${destination}/${module}/include [origin=${repo_dir}/include] [origin=${build_dir}/${module}_defs.h]
 
 # === Keymaps ===
-# Layers to put over the built in one (docs/keymap.md); loaded with libinput_keymap_load()
-keymaps=./keymaps => ${destination}/${module}/keymaps [origin=${repo_dir}/keymaps]
+# One file per language, to put over the built in keymap (docs/keymap.md): a .dmd file picks them with
+# "libinput keymap=pl.ini" (they land in /cfg/keymaps/libinput, where the language of $LANG is looked for)
+configs=./configs => ${destination}/${module}/configs [origin=${repo_dir}/keymaps]
 
 # === License ===
 license=./LICENSE => ${destination}/${module}/LICENSE [origin=${repo_dir}/LICENSE]

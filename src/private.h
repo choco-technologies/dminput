@@ -46,7 +46,7 @@ uint32_t keymap_char(const keymap_t* keymap, uint16_t code, uint8_t layer);
 
 /* ---- libinput.c ---- */
 
-/** The keymap of $DMINPUT_KEYMAP, once, unless one was chosen by libinput_keymap_load(). */
+/** The keymap of the language of $LANG, once, unless one was chosen by libinput_keymap_load(). */
 void keymap_from_environment(void);
 
 /* ---- keys.c ---- */

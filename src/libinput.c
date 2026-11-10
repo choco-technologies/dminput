@@ -19,6 +19,7 @@ struct libinput_reader
 static dmosi_mutex_t        g_lock;
 static struct libinput_reader* g_readers[MAX_READERS];
 static keymap_t*            g_keymap;
+static char                 g_language[LIBINPUT_LANGUAGE_MAX] = "en";  /* of the keymap: "" for a file loaded by path */
 static bool                 g_keymap_chosen;    /* libinput_keymap_load() was called (or the environment looked at) */
 
 /* ---- Readers: queues ---- */
@@ -258,36 +259,91 @@ dmod_libinput_api_declaration(1.0, int, _feed_post_state, ( libinput_feed_t feed
     return 0;
 }
 
-dmod_libinput_api_declaration(1.0, int, _keymap_load, ( const char* path ))
+/* The keymap `keymap` (of the language `language`: "" for a file that is none of the languages) becomes the keymap of the readers */
+static void keymap_install(keymap_t* keymap, const char* language)
+{
+    dmosi_mutex_lock(g_lock);
+    keymap_t* old = g_keymap;
+    g_keymap = keymap;
+    g_keymap_chosen = true;
+    strcpy(g_language, language);
+    dmosi_mutex_unlock(g_lock);
+    keymap_destroy(old);
+}
+
+static int keymap_install_from(const char* path, const char* language)
 {
     int status = 0;
     keymap_t* keymap = (path == NULL) ? keymap_create() : keymap_create_from_file(path, &status);
     if (keymap == NULL)
         return (status != 0) ? status : -ENOMEM;
-    dmosi_mutex_lock(g_lock);
-    keymap_t* old = g_keymap;
-    g_keymap = keymap;
-    g_keymap_chosen = true;
-    dmosi_mutex_unlock(g_lock);
-    keymap_destroy(old);
+    keymap_install(keymap, language);
     return 0;
 }
 
-/* The keymap nobody chose: the file of $DMINPUT_KEYMAP, else the one a board ships (LIBINPUT_BOARD_KEYMAP) - once, unless a keymap
- * was chosen by libinput_keymap_load() */
+dmod_libinput_api_declaration(1.0, int, _keymap_load, ( const char* path ))
+{
+    return keymap_install_from(path, (path == NULL) ? "en" : "");
+}
+
+/* The language of a name like "pl", "pl_PL.UTF-8" or "PL": its letters up to the first '_', '.', '@' or '-', in lower case, into `out`.
+ * 0: English ("en", "C", "POSIX", none), 1: another language, -EINVAL: not a language */
+static int language_of(const char* name, char* out, size_t size)
+{
+    size_t n = 0;
+    while (name != NULL && name[n] != '\0' && name[n] != '_' && name[n] != '.' && name[n] != '@' && name[n] != '-')
+    {
+        char c = name[n];
+        if (n + 1U >= size || c < 'A' || (c > 'Z' && c < 'a') || c > 'z')
+            return -EINVAL;
+        out[n++] = (c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+    }
+    out[n] = '\0';
+    return (n == 0U || strcmp(out, "en") == 0 || strcmp(out, "c") == 0 || strcmp(out, "posix") == 0) ? 0 : 1;
+}
+
+dmod_libinput_api_declaration(1.0, int, _keymap_set_language, ( const char* language ))
+{
+    char name[LIBINPUT_LANGUAGE_MAX];
+    int kind = language_of(language, name, sizeof(name));
+    if (kind < 0)
+        return kind;
+    if (kind == 0)
+        return keymap_install_from(NULL, "en");
+    char path[sizeof(LIBINPUT_KEYMAP_DIR) + sizeof(name) + 5];          /* the directory, '/', the language, ".ini", the terminator */
+    strcpy(path, LIBINPUT_KEYMAP_DIR "/");
+    strcat(path, name);
+    strcat(path, ".ini");
+    return keymap_install_from(path, name);
+}
+
+dmod_libinput_api_declaration(1.0, int, _keymap_language, ( char* language, size_t size ))
+{
+    if (language == NULL || size == 0U)
+        return -EINVAL;
+    dmosi_mutex_lock(g_lock);
+    size_t length = strlen(g_language);
+    int ret = (length < size) ? 0 : -ERANGE;
+    if (ret == 0)
+        strcpy(language, g_language);
+    dmosi_mutex_unlock(g_lock);
+    return ret;
+}
+
+/* The keymap nobody chose: the one of the language of the environment variable LANG, English - the built in one - when there is
+ * none; once, unless a keymap was chosen by libinput_keymap_load() or libinput_keymap_set_language() */
 void keymap_from_environment(void)
 {
     dmosi_mutex_lock(g_lock);
     bool chosen = g_keymap_chosen;
     g_keymap_chosen = true;
     dmosi_mutex_unlock(g_lock);
-    if (chosen)
+    const char* lang = Dmod_GetEnv("LANG");
+    if (chosen || lang == NULL)
         return;
-    const char* path = Dmod_GetEnv("DMINPUT_KEYMAP");
-    bool given = path != NULL && path[0] != '\0';
-    int ret = libinput_keymap_load(given ? path : LIBINPUT_BOARD_KEYMAP);
-    if (ret != 0 && (given || ret != -ENOENT))
-        DMOD_LOG_WARN("libinput: the keymap %s is not used (%d)\n", given ? path : LIBINPUT_BOARD_KEYMAP, ret);
+    int ret = libinput_keymap_set_language(lang);
+    if (ret != 0)
+        DMOD_LOG_WARN("libinput: no keymap for the language %s (%d), English is used\n", lang, ret);
 }
 
 /* ---- Module ---- */

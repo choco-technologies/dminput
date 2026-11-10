@@ -13,8 +13,8 @@ a touch panel, a mouse or buttons) until libsystemd asks the service to stop - s
 [docs/libinput.md](../../docs/libinput.md). inputd registers nothing and keeps nothing: when it
 ends, or crashes, nothing of the device is left in libinput.
 
-For keyboards the keymap is the file named by the environment variable `DMINPUT_KEYMAP`
-(see [docs/keymap.md](../../docs/keymap.md)); without it the built in one is used.
+For keyboards the keymap is that of the language of the environment variable `LANG`
+(see [docs/keymap.md](../../docs/keymap.md)); without it the built in English one is used.
 
 ## How it is started
 

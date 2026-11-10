@@ -1,13 +1,21 @@
 # Keymaps
 
 A keymap says what a key gives: its character in each **layer**, and which keys are the
-modifiers that choose the layer. libinput has one built in (US letters, digits and punctuation
-with shift; shift, ctrl and alt as modifiers; no sticky modifiers). A file (`.ini`) goes
-**on top** of it: the layers it names are added, the ones it does not stay.
+modifiers that choose the layer. libinput has the English one built in: US letters, digits and
+punctuation with shift; shift, ctrl and alt as modifiers; the Sym key of a small keyboard
+(`DMDRVI_KEY_SYM`) and the **sym layer** of the symbols printed on its keys; `$` for the
+dollar key (`DMDRVI_KEY_DOLLAR`); shift, alt and sym are **sticky** (a tap arms them for the next key,
+sym then `N` is a comma) and a second tap of shift locks the capitals. The keys a USB keyboard has
+none of have the same codes for every driver (dmdrvi), so a keymap does not map them.
 
-Load one with `libinput_keymap_load(path)`. Without a call `libinput` uses the file of the environment variable
-`DMINPUT_KEYMAP`, else the keymap the board ships: `/cfg/keymaps/board/keymap.ini` (in dmod-boot the files of
-`configs/board/<board>/keymaps/` go there), when there is one. A file that is not a keymap is refused (`-EINVAL`) and the old keymap stays.
+A file (`.ini`) goes **on top** of the built in one: the layers it names are added, the ones it does
+not stay. The files are **one per language** (`keymaps/<language>.ini`, as `pl.ini`) and the language is
+chosen by the environment variable `LANG`: `pl_PL.UTF-8` or `pl` loads `/cfg/keymaps/libinput/pl.ini`
+(`LIBINPUT_KEYMAP_DIR`; a `keymap=` entry of a `.dmd` file puts the file of libinput's package there);
+without `LANG`, or with `en`, `C`, `POSIX`, the built in English keymap is used. A language without a
+file leaves the English one with a warning. `libinput_keymap_set_language("pl")` changes the language at run time (a settings screen) and
+`libinput_keymap_language()` says which is in use. `libinput_keymap_load(path)` loads a file by hand;
+a file that is not a keymap is refused (`-EINVAL`) and the old keymap stays.
 
 ```ini
 [modifiers]
@@ -39,6 +47,6 @@ W=1
 - A key that has no entry in a layer gives no character there (except the built in `base` and
   `shift`); the application still gets its code.
 
-The code of a key is what the driver says (its configuration maps the matrix of the keyboard to
-USB HID usages), so a keymap goes with the driver's key codes, not with a board.
+The code of a key is what the driver says (USB HID usages and the codes of dmdrvi for the keys that
+have none), so a keymap goes with a language, not with a board or a keyboard.
 [`keymaps/pl.ini`](../keymaps/pl.ini) adds the Polish letters on alt.
