@@ -104,10 +104,9 @@ typedef bool (*libinput_stop_t)(void);
 dmod_libinput_api(1.0, int, _run, ( const char* path, libinput_stop_t should_stop ));
 
 /**
- * The keymap of the keyboards: built in layers (English: US letters, digits, shift, the sym layer of a small keyboard) with the ones
- * of the file on top (see docs/keymap.md). NULL: only the built in one. Without a call the language of the environment variable
- * LANG chooses: LIBINPUT_KEYMAP_DIR/<language>.ini (LANG=pl_PL.UTF-8: pl.ini), the built in English one without LANG
- * (libinput_keymap_set_language() is the same by the name of a language).
+ * A keymap file by hand: it goes on top of the layout of every keyboard INSTEAD of the language (see docs/keymap.md); NULL: English
+ * (the built in keymap), the language chosen by libinput_keymap_set_language() is forgotten. Without a call the language of the
+ * environment variable LANG is used (LANG=pl_PL.UTF-8: pl.ini; none: English).
  * -ENOENT without the file, -EINVAL for a file that is not a keymap (the old keymap stays).
  */
 dmod_libinput_api(1.0, int, _keymap_load, ( const char* path ));
@@ -116,9 +115,10 @@ dmod_libinput_api(1.0, int, _keymap_load, ( const char* path ));
 #define LIBINPUT_LANGUAGE_MAX           16
 
 /**
- * The keymap of a language: the built in English one with LIBINPUT_KEYMAP_DIR/<language>.ini on top. `language` is "pl", "pl_PL.UTF-8"
- * (the form of LANG) and so on, upper or lower case; NULL, "", "en", "C" and "POSIX" are English. It is what a settings screen calls
- * to change the layout; the readers get the new keymap with the next key (a modifier held now stays held).
+ * The language of the keyboards: the layout of each keyboard (its info names it, see docs/keymap.md) with <cfg>/keymaps/libinput/<language>.ini
+ * on top. `language` is "pl", "pl_PL.UTF-8" (the form of LANG) and so on, upper or lower case; NULL, "", "en", "C" and "POSIX" are English.
+ * It is what a settings screen calls to change the layout of the language; every keyboard gets the new keymap with its next key (a
+ * modifier held now stays held). <cfg> is /cfg, or the environment variable DMINPUT_CFG_DIR (a host without /cfg).
  * -ENOENT when there is no file of that language, -EINVAL when the name is none, the old keymap stays then.
  */
 dmod_libinput_api(1.0, int, _keymap_set_language, ( const char* language ));
@@ -163,9 +163,6 @@ dmod_libinput_api(1.0, void, _reader_close, ( libinput_reader_t reader ));
  * a negative errno otherwise.
  */
 dmod_libinput_api(1.0, int, _read, ( libinput_reader_t reader, libinput_event_t* event, uint32_t timeout_ms ));
-
-/** Where the keymaps of the languages are: a `keymap=` entry of a .dmd file puts the files of libinput's package there. */
-#define LIBINPUT_KEYMAP_DIR             "/cfg/keymaps/libinput"
 
 /**
  * Drop everything that waits in the queue of the reader (what it has not taken yet): what was typed while nobody was listening - a

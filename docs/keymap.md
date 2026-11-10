@@ -1,21 +1,44 @@
-# Keymaps
+# Keymaps and layouts
 
-A keymap says what a key gives: its character in each **layer**, and which keys are the
-modifiers that choose the layer. libinput has the English one built in: US letters, digits and
-punctuation with shift; shift, ctrl and alt as modifiers; the Sym key of a small keyboard
-(`DMDRVI_KEY_SYM`) and the **sym layer** of the symbols printed on its keys; `$` for the
-dollar key (`DMDRVI_KEY_DOLLAR`); shift, alt and sym are **sticky** (a tap arms them for the next key,
-sym then `N` is a comma) and a second tap of shift locks the capitals. The keys a USB keyboard has
-none of have the same codes for every driver (dmdrvi), so a keymap does not map them.
+What a key gives is the sum of three layers, put one over the other:
 
-A file (`.ini`) goes **on top** of the built in one: the layers it names are added, the ones it does
-not stay. The files are **one per language** (`keymaps/<language>.ini`, as `pl.ini`) and the language is
-chosen by the environment variable `LANG`: `pl_PL.UTF-8` or `pl` loads `/cfg/keymaps/libinput/pl.ini`
-(`LIBINPUT_KEYMAP_DIR`; a `keymap=` entry of a `.dmd` file puts the file of libinput's package there);
-without `LANG`, or with `en`, `C`, `POSIX`, the built in English keymap is used. A language without a
-file leaves the English one with a warning. `libinput_keymap_set_language("pl")` changes the language at run time (a settings screen) and
-`libinput_keymap_language()` says which is in use. `libinput_keymap_load(path)` loads a file by hand;
-a file that is not a keymap is refused (`-EINVAL`) and the old keymap stays.
+1. **The built in keymap** of an ordinary keyboard: US letters, digits and punctuation with shift; shift, ctrl and alt as modifiers.
+2. **The layout** of the keyboard: which keys it has and how they behave. A small keyboard with a Sym key and no AltGr (`compact`) has
+   sticky modifiers (a tap arms the modifier for the next key: sym, then `N` is a comma), a second tap of shift locks the capitals and the
+   symbols printed on its keys are the **sym** layer; a keypad (`numeric`) has digits and four operations. An ordinary PC keyboard
+   (`full`, the default) needs none.
+3. **The language**: the letters with accents and the like (`pl`: Polish letters on alt), the same for every keyboard.
+
+## The layout of a keyboard
+
+The driver says it in its info (`dmdrvi_input_info_t`): `layout` (a name) and `module` (the module of the driver). libinput looks for
+`<layout>.ini` first among the files the module ships (`/cfg/layouts/<module>/`), then among its own (`/cfg/layouts/libinput/`: `compact`,
+`numeric`). A driver with a keyboard nobody else has brings its file with it - a `layout=` entry of the `.dmd` file puts it there - and
+can **extend** a ready layout instead of writing everything:
+
+```ini
+[layout]
+extends=compact         ; the layouts it extends are read first (4 deep)
+
+[sym]
+0x110=%                 ; a key of its own (the driver gives it a code from DMDRVI_KEY_VENDOR_BASE + 0x10)
+```
+
+Without a layout in its info (or `full`) a keyboard is an ordinary one. A layout that is not found is a warning in the log and the
+keyboard is an ordinary one. The keys a USB keyboard has none of (`SYM`, `MIC`, `DOLLAR`) have the same codes for every driver
+(dmdrvi: `DMDRVI_KEY_SYM` 0x100, `DMDRVI_KEY_MIC` 0x101, `DMDRVI_KEY_DOLLAR` 0x102), so a layout only says what they are.
+
+## The language
+
+One per language: `configs/keymaps/<language>.ini` (as `pl.ini`), put in `/cfg/keymaps/libinput` by a `keymap=` entry of the `.dmd` file. The
+language is chosen by the environment variable `LANG` at start: `pl_PL.UTF-8` or `pl` is `pl.ini`; without `LANG`, or with `en`, `C`,
+`POSIX`, nothing is added (English). A language without a file leaves English with a warning. `libinput_keymap_set_language("pl")` changes it
+at run time (a settings screen) for **every** keyboard at once, `libinput_keymap_language()` says which is in use. `libinput_keymap_load(path)`
+puts a file by hand on top of the layouts instead of the language; a file that is not a keymap is refused (`-EINVAL`) and the old keymap stays.
+
+`/cfg` is the directory of the system; the environment variable `DMINPUT_CFG_DIR` puts it elsewhere (a host without `/cfg`, the tests).
+
+## The file
 
 ```ini
 [modifiers]
@@ -48,5 +71,6 @@ W=1
   `shift`); the application still gets its code.
 
 The code of a key is what the driver says (USB HID usages and the codes of dmdrvi for the keys that
-have none), so a keymap goes with a language, not with a board or a keyboard.
-[`keymaps/pl.ini`](../keymaps/pl.ini) adds the Polish letters on alt.
+have none). [`configs/keymaps/pl.ini`](../configs/keymaps/pl.ini) adds the Polish letters on alt,
+[`configs/layouts/compact.ini`](../configs/layouts/compact.ini) is the layout of a small keyboard,
+[`configs/layouts/numeric.ini`](../configs/layouts/numeric.ini) that of a keypad.
