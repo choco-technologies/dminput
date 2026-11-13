@@ -7,7 +7,7 @@
 # configs/inputd.rules from configs/inputd@.ini.
 set(DMOD_MODULE_NAME        inputd)
 set(DMOD_AUTHOR_NAME        "Patryk Kubiak")
-set(DMOD_STACK_SIZE         3072)
+set(DMOD_STACK_SIZE         4096)
 set(DMOD_PRIORITY           2)
 set(DMOD_DMR_PATH           ${CMAKE_CURRENT_SOURCE_DIR}/inputd.dmr)
 set(DMOD_MAL_IMPLS          )
